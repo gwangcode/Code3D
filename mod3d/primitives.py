@@ -116,15 +116,11 @@ def bspline_surface(points, thickness=0.0):
     return Shape(face)
 
 
-def smooth_body(points, u_res=10, v_res=20):
+def smooth_body(points, u_res=15, v_res=30):
     """
     Generate a perfectly smooth, watertight B-Spline solid from a point cloud.
-    Uses Ellipsoidal Parameterization (PCA) with pole capping to create a TOPOLOGICALLY CLOSED 
-    B-Spline surface, which is then directly converted to a Solid (NO THICKENING).
-    
-    :param points: List of 3D points.
-    :param u_res: Latitude resolution. Higher values capture more vertical details.
-    :param v_res: Longitude resolution. Higher values capture more horizontal details.
+    Uses Ellipsoidal Parameterization to generate perfect cross-sections, 
+    then uses Part.makeLoft to create a solid with pole capping.
     """
     import numpy as np
     import FreeCAD
@@ -136,29 +132,28 @@ def smooth_body(points, u_res=10, v_res=20):
 
     np_pts = np.array(points)
 
+    # 1. 共面性检测
+    centroid = np_pts.mean(axis=0)
+    centered = np_pts - centroid
+    _, s, vh = np.linalg.svd(centered)
+    distances = np.abs(np.dot(centered, vh[-1]))
+    is_coplanar = np.max(distances) < 1e-3 * max(np.max(s), 1e-6)
+
+    if is_coplanar:
+        angles = np.arctan2(centered[:, 1], centered[:, 0])
+        order = np.argsort(angles)
+        sorted_pts = np_pts[order]
+        vecs = [FreeCAD.Vector(*p) for p in sorted_pts]
+        vecs.append(vecs[0])
+        try:
+            curve = Part.BSplineCurve()
+            curve.interpolate(vecs, PeriodicFlag=True)
+            wire = Part.Wire([curve.toShape()])
+            return Shape(Part.Face(wire))
+        except Exception:
+            return Shape(Part.Face(Part.makePolygon(vecs)))
+
     try:
-        # 1. 共面性检测
-        centroid = np_pts.mean(axis=0)
-        centered = np_pts - centroid
-        _, s, vh = np.linalg.svd(centered)
-        distances = np.abs(np.dot(centered, vh[-1]))
-        is_coplanar = np.max(distances) < 1e-3 * max(np.max(s), 1e-6)
-
-        if is_coplanar:
-            # 共面时，按极角排序生成 2D 面
-            angles = np.arctan2(centered[:, 1], centered[:, 0])
-            order = np.argsort(angles)
-            sorted_pts = np_pts[order]
-            vecs = [FreeCAD.Vector(*p) for p in sorted_pts]
-            vecs.append(vecs[0])
-            try:
-                curve = Part.BSplineCurve()
-                curve.interpolate(vecs, PeriodicFlag=True)
-                wire = Part.Wire([curve.toShape()])
-                return Shape(Part.Face(wire))
-            except Exception:
-                return Shape(Part.Face(Part.makePolygon(vecs)))
-
         # 2. PCA 计算最优椭球主轴
         cov = np.cov(centered.T)
         u, s, vh = np.linalg.svd(cov)
@@ -198,50 +193,47 @@ def smooth_body(points, u_res=10, v_res=20):
                 world_row.append(FreeCAD.Vector(float(world_p[0]), float(world_p[1]), float(world_p[2])))
             grid_pts_world.append(world_row)
         
-        # 6. 闭合经线 (phi 方向闭合)
+        # 6. 闭合经线 (phi)
         wrapped = [row + [row[0]] for row in grid_pts_world]
         
-        # 7. 强制极点闭合 (Pole Capping)
-        top_pole = wrapped[0][0]
-        bottom_pole = wrapped[-1][0]
-        wrapped[0] = [top_pole] * len(wrapped[0])
-        wrapped[-1] = [bottom_pole] * len(wrapped[-1])
-        
-        # 8. 拟合闭合 B-Spline 曲面并转为 Solid
-        try:
-            surf = Part.BSplineSurface()
-            # buildFromPoles(控制点, U阶数, V阶数, U周期, V周期)
-            surf.buildFromPoles(wrapped, 3, 3, False, False)
-            face = surf.toShape()
-            
-            # 拓扑闭合并直接转为实心体
-            shell = Part.Shell([face])
-            solid = Part.Solid(shell)
-            
-            return Shape(solid)
-            
-        except Exception as e:
-            FreeCAD.Console.PrintWarning(f"Closed B-Spline generation failed: {e}\n")
-            
-            # ==========================================
-            # 降级保险：如果闭合失败，退回凸包（极少发生）
-            # ==========================================
-            import Mesh
-            import trimesh
-            hull = trimesh.convex.convex_hull(np_pts)
-            mesh_obj = Mesh.Mesh()
-            for f in hull.faces:
-                v0, v1, v2 = hull.vertices[f[0]], hull.vertices[f[1]], hull.vertices[f[2]]
-                mesh_obj.addFacet(float(v0[0]), float(v0[1]), float(v0[2]),
-                                  float(v1[0]), float(v1[1]), float(v1[2]),
-                                  float(v2[0]), float(v2[1]), float(v2[2]))
-            shape = Part.Shape()
-            shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
-            return Shape(Part.makeSolid(shape))
+        # ==========================================
+        # 7. 【核心魔法】生成极点和完美闭合截面，直接放样
+        # ==========================================
+        sections = []
+        for i, row in enumerate(wrapped):
+            if i == 0 or i == len(wrapped) - 1:
+                # 极点：直接使用一个点作为截面
+                sections.append(Part.Vertex(row[0]))
+            else:
+                # 非极点：使用完美的 B 样条闭合环
+                bspline = Part.BSplineCurve()
+                bspline.interpolate(row, PeriodicFlag=True)
+                sections.append(Part.Wire([bspline.toShape()]))
+
+        # 直接放样，生成实心体（自动封顶）
+        loft_solid = Part.makeLoft(sections, solid=True, ruled=False)
+        if loft_solid and loft_solid.isValid():
+            return Shape(loft_solid)
 
     except Exception as e:
-        FreeCAD.Console.PrintError(f"Unhandled exception in smooth_body: {e}\n")
-        return Shape(Part.makeSphere(1.0))
+        FreeCAD.Console.PrintWarning(f"Smooth body generation failed: {e}\n")
+        pass
+
+    # ==========================================
+    # 8. 终极兜底（以防极端情况）
+    # ==========================================
+    import Mesh
+    import trimesh
+    hull = trimesh.convex.convex_hull(np_pts)
+    mesh_obj = Mesh.Mesh()
+    for f in hull.faces:
+        v0, v1, v2 = hull.vertices[f[0]], hull.vertices[f[1]], hull.vertices[f[2]]
+        mesh_obj.addFacet(float(v0[0]), float(v0[1]), float(v0[2]),
+                          float(v1[0]), float(v1[1]), float(v1[2]),
+                          float(v2[0]), float(v2[1]), float(v2[2]))
+    shape = Part.Shape()
+    shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
+    return Shape(Part.makeSolid(shape))
 
 
 # ==========================================
