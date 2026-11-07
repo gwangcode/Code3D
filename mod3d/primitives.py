@@ -116,7 +116,7 @@ def bspline_surface(points, thickness=0.0):
     return Shape(face)
 
 
-def smooth_body(points):
+def smooth_body(points, slices=8, poles=12):
     """
     Generate a smooth 3D solid from unordered points.
     This function is wrapped in a massive try-except to ensure it NEVER returns None,
@@ -191,7 +191,9 @@ def smooth_body(points):
                 min_v, max_v = bbox.ZMin, bbox.ZMax
                 dir_v = FreeCAD.Vector(0, 0, 1)
 
-            slices = 8
+            # 【核心修复】这里使用传入的 slices 和 poles 参数
+            if slices < 2:
+                slices = 2
             margin = (max_v - min_v) * 0.05
             levels = [
                 min_v + margin + i * (max_v - min_v - 2 * margin) / (slices - 1)
@@ -205,7 +207,7 @@ def smooth_body(points):
                     if not ws:
                         continue
                     main_w = max(ws, key=lambda w: w.Length)
-                    pts_raw = main_w.discretize(Number=12)
+                    pts_raw = main_w.discretize(Number=poles)
                     if len(pts_raw) > 1 and (pts_raw[0] - pts_raw[-1]).Length < 1e-5:
                         pts_raw = pts_raw[:-1]
                     
