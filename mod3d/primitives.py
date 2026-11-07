@@ -255,7 +255,6 @@ def smooth_body(points, slices=15, target_poles=30):
             if loft_solid and loft_solid.isValid():
                 return Shape(loft_solid)
         except Exception as e:
-            # 打印出具体的报错，方便调试
             FreeCAD.Console.PrintWarning(f"Loft failed: {e}\n")
 
     return _fallback_smooth_mesh(hull)
