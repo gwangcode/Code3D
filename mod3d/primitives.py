@@ -181,11 +181,10 @@ def smooth_body(points, slices=15, target_poles=30):
     margin = (max_val - min_val) * 0.01
     levels = np.linspace(min_val + margin, max_val - margin, slices)
     
-    # 4. Slice and Resample (using solid.slice for maximum compatibility)
+    # 4. Slice and Resample
     all_sections_points = []
     
     for level in levels:
-        # 【核心修复】使用稳定的 slice 方法替代 section(Plane)
         wires = solid_hull.slice(slice_dir, level)
         
         if not wires:
@@ -193,18 +192,13 @@ def smooth_body(points, slices=15, target_poles=30):
             
         main_wire = max(wires, key=lambda w: w.Length)
         
-        # Resample
-        pts = []
-        for j in range(target_poles):
-            t = float(j) / target_poles
-            pt = main_wire.valueAt(main_wire.FirstParameter + t * (main_wire.LastParameter - main_wire.FirstParameter))
-            pts.append(pt)
-        all_sections_points.append(pts)
+        pts = main_wire.discretize(Number=target_poles)
+        all_sections_points.append(list(pts))
 
     if len(all_sections_points) < 2:
         return Shape(solid_hull)
 
-    # 5. Align Orientations (Clockwise vs Counter-Clockwise)
+    # 5. Align Orientations
     base_sect = all_sections_points[0]
     base_center = FreeCAD.Vector(
         sum(p.x for p in base_sect)/len(base_sect), 
@@ -221,7 +215,7 @@ def smooth_body(points, slices=15, target_poles=30):
         )
         
         score_normal, score_reversed = 0, 0
-        n = target_poles
+        n = len(base_sect)
         for i in range(n):
             v_base = base_sect[i] - base_center
             score_normal += v_base.dot(curr_sect[i] - curr_center)
