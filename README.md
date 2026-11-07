@@ -143,7 +143,7 @@ The Code3D engine comes with a rich set of built-in 3D and 2D primitives. All 3D
 
 ---
 
-🔬 Advanced Surface & Point-Cloud Algorithms
+# 🔬 Advanced Surface & Point-Cloud Algorithms
 bspline_surface(points, thickness=0.0)
 Generates mathematically precise B-Spline surfaces from either 1D contours or 2D point grids.
 
@@ -156,7 +156,7 @@ Thickness: Set thickness > 0 to solidify the resulting surface into a 3D body.
 smooth_body(points, iterations=3)
 Generates a perfectly smooth, watertight, organic 3D solid from a chaotic, unordered list of 3D points.
 
-Internal Pipeline:
+# Internal Pipeline:
 
 Coplanarity Check: Gracefully degrades to a 2D planar face if all points lie on a plane.
 Convex Hull: Uses trimesh to find the initial bounding volume.
@@ -164,6 +164,7 @@ Catmull-Clark Subdivision: Refines the mesh topology iteratively (iterations par
 Taubin Smoothing: Applies a volume-preserving Laplacian smoothing filter to eliminate sharp angles without shrinking the overall body.
 Solidification: Converts the final smoothed mesh back into a valid FreeCAD Solid.
 Parameters: points (List of (x,y,z) tuples), iterations (Higher = smoother but denser).
+
 ---
 
 ### 2. `smooth_body(points, slices=15, target_poles=30)`
