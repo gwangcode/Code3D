@@ -122,26 +122,25 @@ def smooth_body(points, u_res=20, v_res=40):
     Uses Ellipsoidal Parameterization (PCA) with pole capping to create a TOPOLOGICALLY CLOSED 
     B-Spline surface, which is then directly converted to a Solid (NO THICKENING).
     """
-    import numpy as np
-    import FreeCAD
-    import Part
-    from .patch import Shape
-
     if not points or len(points) < 4:
         raise ValueError("At least 4 points are required to form a 3D solid.")
 
     np_pts = np.array(points)
     
+    # 1. 计算质心
     center = np.mean(np_pts, axis=0)
     relative = np_pts - center
 
+    # 2. PCA 计算最优椭球主轴
     cov = np.cov(relative.T)
     u, s, vh = np.linalg.svd(cov)
     scale = np.sqrt(s)
     scale = np.maximum(scale, 1e-5)
 
+    # 3. 仿射变换到单位球空间
     normalized_pts = np.dot(relative, u) / scale
 
+    # 4. 严格包含极点的球面参数化
     thetas = np.linspace(0, np.pi, u_res)
     phis = np.linspace(-np.pi, np.pi, v_res)
     
@@ -162,6 +161,7 @@ def smooth_body(points, u_res=20, v_res=40):
             row.append(pt)
         grid_pts_normalized.append(row)
 
+    # 5. 逆变换还原回真实坐标
     grid_pts_world = []
     for row in grid_pts_normalized:
         world_row = []
@@ -183,20 +183,17 @@ def smooth_body(points, u_res=20, v_res=40):
         surf = Part.BSplineSurface()
         surf.buildFromPoles(wrapped, 3, 3, False, False)
         face = surf.toShape()
-
+        
+        # 8. 直接通过 Shell 转 Solid (不加厚)
         shell = Part.Shell([face])
         solid = Part.Solid(shell)
         
         return Shape(solid)
         
     except Exception as e:
-        import FreeCAD
         FreeCAD.Console.PrintWarning(f"Closed B-Spline generation failed: {e}\n")
         
         # 9. Fallback: 退回网格细分 (确保绝对不崩溃)
-        import Mesh
-        import trimesh
-        
         hull = trimesh.convex.convex_hull(np_pts)
         smooth_mesh = hull.copy()
         for _ in range(3):
@@ -219,6 +216,7 @@ def smooth_body(points, u_res=20, v_res=40):
         shape = Part.Shape()
         shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
         return Shape(Part.makeSolid(shape))
+
 
 # ==========================================
 # ---- 2D primitives ----
