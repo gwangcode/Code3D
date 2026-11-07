@@ -143,45 +143,27 @@ The Code3D engine comes with a rich set of built-in 3D and 2D primitives. All 3D
 
 ---
 
-## 🌐 Advanced Surface & Point-Cloud Generators
+🔬 Advanced Surface & Point-Cloud Algorithms
+bspline_surface(points, thickness=0.0)
+Generates mathematically precise B-Spline surfaces from either 1D contours or 2D point grids.
 
-This workbench includes highly advanced algorithms to generate smooth, continuous B-Spline surfaces and solids from raw point clouds. 
+1D input [(x,y,z), ...]: Generates a closed B-Spline curve. If coplanar, fills it into a Face; if non-coplanar, returns a 3D Wire.
 
-### 1. `bspline_surface(points, thickness=0.0)`
+2D input [[(x,y,z), ...], ...]: Generates a standard B-Spline free-form surface.
 
-This function creates mathematically precise B-Spline surfaces from either a 1D contour or a 2D grid of points.
+Thickness: Set thickness > 0 to solidify the resulting surface into a 3D body.
 
-**Input Modes:**
-*   **1D Contour (`List[Tuple]`)**: E.g., `[(x1,y1,z1), (x2,y2,z2), ...]`. 
-    *   If the points are **coplanar** (lying on the same flat plane), it generates a smooth filled `Face`.
-    *   If the points are **non-coplanar**, it generates a 3D wireframe `Wire` (which can be used for sweeps or pipes).
-*   **2D Point Grid (`List[List[Tuple]]`)**: E.g., `[[p1, p2, p3], [p4, p5, p6], ...]`. 
-    *   Generates a standard freeform B-Spline surface (like a wavy cloth). 
+smooth_body(points, iterations=3)
+Generates a perfectly smooth, watertight, organic 3D solid from a chaotic, unordered list of 3D points.
 
-**Parameters:**
-*   `points`: The list of coordinates.
-*   `thickness`: (Optional) If greater than `0.0`, the resulting surface will be solidified (thickened) into a closed 3D body.
+Internal Pipeline:
 
-**Examples:**
-```python
-# Example A: A wavy 3x3 grid surface
-grid_pts = [
-    [(0, 0, 0), (10, 0, 5), (20, 0, 0)],
-    [(0, 10, 5), (10, 10, 10), (20, 10, 5)],
-    [(0, 20, 0), (10, 20, 5), (20, 20, 0)]
-]
-bspline_surface(grid_pts)
-
-# Example B: A 2D heart contour, thickened into a 3D solid
-heart_pts = [(0, 0, 0), (15, 5, 0), (20, 15, 0), (10, 25, 0), (0, 20, 0), (-10, 10, 0)]
-bspline_surface(heart_pts, thickness=2.0)
-```
-
-**⚠️ Caveats & Warnings:**
-1.  **Self-Intersection**: A 1D point contour must not intersect itself (no "figure-8" shapes), or `Part.Face()` will fail.
-2.  **Grid Rectangularity**: For 2D grids, every row must have the exact same number of points (an `N x M` matrix). Irregular arrays will cause the B-Spline interpolation to fail.
-3.  **Thickness Artifacts**: Using a very large `thickness` on a highly curved surface may cause the side walls to self-intersect, resulting in an invalid solid.
-
+Coplanarity Check: Gracefully degrades to a 2D planar face if all points lie on a plane.
+Convex Hull: Uses trimesh to find the initial bounding volume.
+Catmull-Clark Subdivision: Refines the mesh topology iteratively (iterations parameter).
+Taubin Smoothing: Applies a volume-preserving Laplacian smoothing filter to eliminate sharp angles without shrinking the overall body.
+Solidification: Converts the final smoothed mesh back into a valid FreeCAD Solid.
+Parameters: points (List of (x,y,z) tuples), iterations (Higher = smoother but denser).
 ---
 
 ### 2. `smooth_body(points, slices=15, target_poles=30)`
