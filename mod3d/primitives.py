@@ -4,6 +4,7 @@ import Part
 import Mesh
 import MeshPart
 import trimesh
+import math
 from .shapes import Shape2d
 from .patch import Shape
 
@@ -115,13 +116,16 @@ def bspline_surface(points, thickness=0.0):
     return Shape(face)
 
 
-def smooth_body(points, slices=6):
+import math  # 确保文件顶部有这个导入
+
+def smooth_body(points, slices=15, target_poles=30):
     """
     Generate a minimal-face, mathematically smooth B-Spline body from unordered points.
-    Algorithm: 
-    1. Compute Convex Hull.
-    2. Slice the hull into a few horizontal layers.
-    3. Loft the sections into a solid.
+    Workflow: Convex Hull -> Slice -> Resample -> Align Poles -> Loft.
+    
+    :param points: List of 3D points.
+    :param slices: Number of horizontal slices. (More = more detail, higher face count)
+    :param target_poles: Number of control points per section for B-Spline fitting.
     """
     import numpy as np
     
@@ -130,7 +134,7 @@ def smooth_body(points, slices=6):
 
     np_pts = np.array(points)
 
-    # 1. Coplanarity check
+    # 1. Coplanarity check (Return a flat Face if points are in a plane)
     centroid = np_pts.mean(axis=0)
     centered_pts = np_pts - centroid
     u, s, vh = np.linalg.svd(centered_pts)
@@ -146,6 +150,7 @@ def smooth_body(points, slices=6):
         except Exception:
             return Shape(Part.makePolygon([FreeCAD.Vector(*p) for p in points]))
 
+    # 2. Calculate Convex Hull (Use trimesh to get a watertight raw solid)
     hull = trimesh.convex.convex_hull(np_pts)
     mesh_obj = Mesh.Mesh()
     for f in hull.faces:
@@ -155,9 +160,10 @@ def smooth_body(points, slices=6):
                           float(v2[0]), float(v2[1]), float(v2[2]))
     shape = Part.Shape()
     shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
-    solid = Part.makeSolid(shape)
+    solid_hull = Part.makeSolid(shape)
 
-    bbox = solid.BoundBox
+    # 3. Auto-detect the longest axis to slice along
+    bbox = solid_hull.BoundBox
     lengths = [bbox.XLength, bbox.YLength, bbox.ZLength]
     axis = int(np.argmax(lengths))
     
@@ -174,7 +180,9 @@ def smooth_body(points, slices=6):
     margin = (max_val - min_val) * 0.01
     levels = np.linspace(min_val + margin, max_val - margin, slices)
     
-    wires = []
+    # 4. Slice, Resample, and Align Sections
+    all_sections_points = []
+    
     for level in levels:
         if axis == 0:
             plane = FreeCAD.Plane(origin=FreeCAD.Vector(level, 0, 0), xDir=(0, 1, 0), normal=(1, 0, 0))
@@ -183,34 +191,83 @@ def smooth_body(points, slices=6):
         else:
             plane = FreeCAD.Plane(origin=FreeCAD.Vector(0, 0, level), xDir=(1, 0, 0), normal=(0, 0, 1))
             
-        sec = solid.section(plane)
-        if sec and sec.Faces:
-            main_face = max(sec.Faces, key=lambda f: f.Area)
-            wires.append(main_face.outerWire())
+        sec = solid_hull.section(plane)
+        if not sec or not sec.Faces:
+            continue
+            
+        # Get the largest closed wire from the section
+        main_face = max(sec.Faces, key=lambda f: f.Area)
+        wire = main_face.outerWire()
+        
+        # Resample the wire using target_poles points
+        pts = []
+        for j in range(target_poles):
+            t = float(j) / target_poles
+            # valueAt extracts the exact 3D point along the curve parameter
+            pt = wire.valueAt(wire.FirstParameter + t * (wire.LastParameter - wire.FirstParameter))
+            pts.append(pt)
+        all_sections_points.append(pts)
 
-    if len(wires) >= 2:
+    if len(all_sections_points) < 2:
+        # Fallback to raw convex hull if slicing fails completely
+        return Shape(solid_hull)
+
+    # 5. Align Orientations (Clockwise vs Counter-Clockwise)
+    base_sect = all_sections_points[0]
+    base_center = App.Vector(sum(p.x for p in base_sect)/len(base_sect), sum(p.y for p in base_sect)/len(base_sect), 0)
+    
+    for s_idx in range(1, len(all_sections_points)):
+        curr_sect = all_sections_points[s_idx]
+        curr_center = App.Vector(sum(p.x for p in curr_sect)/len(curr_sect), sum(p.y for p in curr_sect)/len(curr_sect), 0)
+        
+        score_normal, score_reversed = 0, 0
+        n = target_poles
+        for i in range(n):
+            v_base = base_sect[i] - base_center
+            score_normal += v_base.dot(curr_sect[i] - curr_center)
+            score_reversed += v_base.dot(curr_sect[(n - i) % n] - curr_center)
+            
+        if score_reversed > score_normal:
+            curr_sect.reverse()
+
+    # 6. Align Start Points (Roll the closest point to index 0)
+    final_sections = [base_sect]
+    for s_idx in range(1, len(all_sections_points)):
+        curr_sect = all_sections_points[s_idx]
+        base_start_pt = final_sections[-1][0]
+        
+        best_idx = 0
+        min_dist = float('inf')
+        for i, pt in enumerate(curr_sect):
+            dist = (pt - base_start_pt).Length
+            if dist < min_dist:
+                min_dist = dist
+                best_idx = i
+                
+        aligned_sect = curr_sect[best_idx:] + curr_sect[:best_idx]
+        final_sections.append(aligned_sect)
+
+    # 7. Create B-Spline Wires and Loft
+    smooth_wires = []
+    for sect in final_sections:
         try:
-            loft_solid = Part.makeLoft(wires, solid=True, ruled=False)
+            bspline = Part.BSplineCurve()
+            # Build a closed (periodic), degree 3 (C2) B-Spline curve
+            bspline.buildFromPoles(sect, None, None, None, True, 3)
+            smooth_wires.append(Part.Wire([bspline.toShape()]))
+        except Exception:
+            continue
+
+    if len(smooth_wires) >= 2:
+        try:
+            loft_solid = Part.makeLoft(smooth_wires, solid=True, ruled=False)
             if loft_solid and loft_solid.isValid():
                 return Shape(loft_solid)
         except Exception:
             pass
-            
-    smooth_mesh = hull.copy()
-    for _ in range(2):
-        smooth_mesh = smooth_mesh.subdivide()
-    vertices = smooth_mesh.vertices
-    faces = smooth_mesh.faces
 
-    mesh_obj = Mesh.Mesh()
-    for f in faces:
-        v0, v1, v2 = vertices[f[0]], vertices[f[1]], vertices[f[2]]
-        mesh_obj.addFacet(float(v0[0]), float(v0[1]), float(v0[2]),
-                          float(v1[0]), float(v1[1]), float(v1[2]),
-                          float(v2[0]), float(v2[1]), float(v2[2]))
-    shape = Part.Shape()
-    shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
-    return Shape(Part.makeSolid(shape))
+    # 8. Ultimate Fallback
+    return Shape(solid_hull)
 
 # ==========================================
 # ---- 2D primitives ----
