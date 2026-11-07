@@ -292,7 +292,7 @@ def tangent(x_start=-0.5*np.pi, x_end=0.5*np.pi, step=0.1, height=100):
     mask = np.abs(y) < height
     return Shape2d(np.column_stack([x[mask], y[mask]]))
 
-def free_curve(points, closed=False):
+def free_curve(points, closed=True):
     if not points or len(points) < 2:
         raise ValueError("At least 2 points are required to form a curve.")
 
