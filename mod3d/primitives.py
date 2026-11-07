@@ -238,22 +238,6 @@ def smooth_body(points, u_res=15, v_res=30):
     shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
     return Shape(Part.makeSolid(shape))
 
-    # ==========================================
-    # 8. 终极兜底
-    # ==========================================
-    import Mesh
-    import trimesh
-    hull = trimesh.convex.convex_hull(np_pts)
-    mesh_obj = Mesh.Mesh()
-    for f in hull.faces:
-        v0, v1, v2 = hull.vertices[f[0]], hull.vertices[f[1]], hull.vertices[f[2]]
-        mesh_obj.addFacet(float(v0[0]), float(v0[1]), float(v0[2]),
-                          float(v1[0]), float(v1[1]), float(v1[2]),
-                          float(v2[0]), float(v2[1]), float(v2[2]))
-    shape = Part.Shape()
-    shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
-    return Shape(Part.makeSolid(shape))
-
 
 # ==========================================
 # ---- 2D primitives ----
