@@ -122,19 +122,20 @@ def smooth_body(points, slices=15, target_poles=30):
     """
     Generate a minimal-face, mathematically smooth B-Spline body from unordered points.
     Workflow: Convex Hull -> Slice -> Resample -> Align Poles -> Loft.
-    
-    :param points: List of 3D points.
-    :param slices: Number of horizontal slices. (More = more detail, higher face count)
-    :param target_poles: Number of control points per section for B-Spline fitting.
     """
     import numpy as np
-    
+    import FreeCAD
+    import Part
+    import Mesh
+    import trimesh
+    from .patch import Shape
+
     if not points or len(points) < 4:
         raise ValueError("At least 4 points are required to form a 3D solid.")
 
     np_pts = np.array(points)
 
-    # 1. Coplanarity check (Return a flat Face if points are in a plane)
+    # 1. Coplanarity check
     centroid = np_pts.mean(axis=0)
     centered_pts = np_pts - centroid
     u, s, vh = np.linalg.svd(centered_pts)
@@ -150,7 +151,7 @@ def smooth_body(points, slices=15, target_poles=30):
         except Exception:
             return Shape(Part.makePolygon([FreeCAD.Vector(*p) for p in points]))
 
-    # 2. Calculate Convex Hull (Use trimesh to get a watertight raw solid)
+    # 2. Calculate Convex Hull
     hull = trimesh.convex.convex_hull(np_pts)
     mesh_obj = Mesh.Mesh()
     for f in hull.faces:
@@ -162,63 +163,62 @@ def smooth_body(points, slices=15, target_poles=30):
     shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
     solid_hull = Part.makeSolid(shape)
 
-    # 3. Auto-detect the longest axis to slice along
+    # 3. Auto-detect the longest axis
     bbox = solid_hull.BoundBox
     lengths = [bbox.XLength, bbox.YLength, bbox.ZLength]
     axis = int(np.argmax(lengths))
     
     if axis == 0:
-        normal_vec = FreeCAD.Vector(1, 0, 0)
         min_val, max_val = bbox.XMin, bbox.XMax
+        slice_dir = FreeCAD.Vector(1, 0, 0)
     elif axis == 1:
-        normal_vec = FreeCAD.Vector(0, 1, 0)
         min_val, max_val = bbox.YMin, bbox.YMax
+        slice_dir = FreeCAD.Vector(0, 1, 0)
     else:
-        normal_vec = FreeCAD.Vector(0, 0, 1)
         min_val, max_val = bbox.ZMin, bbox.ZMax
+        slice_dir = FreeCAD.Vector(0, 0, 1)
 
     margin = (max_val - min_val) * 0.01
     levels = np.linspace(min_val + margin, max_val - margin, slices)
     
-    # 4. Slice, Resample, and Align Sections
+    # 4. Slice and Resample (using solid.slice for maximum compatibility)
     all_sections_points = []
     
     for level in levels:
-        if axis == 0:
-            plane = FreeCAD.Plane(origin=FreeCAD.Vector(level, 0, 0), xDir=(0, 1, 0), normal=(1, 0, 0))
-        elif axis == 1:
-            plane = FreeCAD.Plane(origin=FreeCAD.Vector(0, level, 0), xDir=(1, 0, 0), normal=(0, 1, 0))
-        else:
-            plane = FreeCAD.Plane(origin=FreeCAD.Vector(0, 0, level), xDir=(1, 0, 0), normal=(0, 0, 1))
-            
-        sec = solid_hull.section(plane)
-        if not sec or not sec.Faces:
+        # 【核心修复】使用稳定的 slice 方法替代 section(Plane)
+        wires = solid_hull.slice(slice_dir, level)
+        
+        if not wires:
             continue
             
-        # Get the largest closed wire from the section
-        main_face = max(sec.Faces, key=lambda f: f.Area)
-        wire = main_face.outerWire()
+        main_wire = max(wires, key=lambda w: w.Length)
         
-        # Resample the wire using target_poles points
+        # Resample
         pts = []
         for j in range(target_poles):
             t = float(j) / target_poles
-            # valueAt extracts the exact 3D point along the curve parameter
-            pt = wire.valueAt(wire.FirstParameter + t * (wire.LastParameter - wire.FirstParameter))
+            pt = main_wire.valueAt(main_wire.FirstParameter + t * (main_wire.LastParameter - main_wire.FirstParameter))
             pts.append(pt)
         all_sections_points.append(pts)
 
     if len(all_sections_points) < 2:
-        # Fallback to raw convex hull if slicing fails completely
         return Shape(solid_hull)
 
     # 5. Align Orientations (Clockwise vs Counter-Clockwise)
     base_sect = all_sections_points[0]
-    base_center = App.Vector(sum(p.x for p in base_sect)/len(base_sect), sum(p.y for p in base_sect)/len(base_sect), 0)
+    base_center = FreeCAD.Vector(
+        sum(p.x for p in base_sect)/len(base_sect), 
+        sum(p.y for p in base_sect)/len(base_sect), 
+        sum(p.z for p in base_sect)/len(base_sect)
+    )
     
     for s_idx in range(1, len(all_sections_points)):
         curr_sect = all_sections_points[s_idx]
-        curr_center = App.Vector(sum(p.x for p in curr_sect)/len(curr_sect), sum(p.y for p in curr_sect)/len(curr_sect), 0)
+        curr_center = FreeCAD.Vector(
+            sum(p.x for p in curr_sect)/len(curr_sect), 
+            sum(p.y for p in curr_sect)/len(curr_sect), 
+            sum(p.z for p in curr_sect)/len(curr_sect)
+        )
         
         score_normal, score_reversed = 0, 0
         n = target_poles
@@ -230,7 +230,7 @@ def smooth_body(points, slices=15, target_poles=30):
         if score_reversed > score_normal:
             curr_sect.reverse()
 
-    # 6. Align Start Points (Roll the closest point to index 0)
+    # 6. Align Start Points
     final_sections = [base_sect]
     for s_idx in range(1, len(all_sections_points)):
         curr_sect = all_sections_points[s_idx]
@@ -252,7 +252,6 @@ def smooth_body(points, slices=15, target_poles=30):
     for sect in final_sections:
         try:
             bspline = Part.BSplineCurve()
-            # Build a closed (periodic), degree 3 (C2) B-Spline curve
             bspline.buildFromPoles(sect, None, None, None, True, 3)
             smooth_wires.append(Part.Wire([bspline.toShape()]))
         except Exception:
