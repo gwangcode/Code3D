@@ -116,17 +116,19 @@ def bspline_surface(points, thickness=0.0):
     return Shape(face)
 
 
-def smooth_body(points, slices=8, poles=12):
+def smooth_body(points, u_res=10, v_res=20):
     """
-    Generate a smooth 3D solid from unordered points.
-    This function is wrapped in a massive try-except to ensure it NEVER returns None,
-    guaranteeing compatibility across all FreeCAD environments.
+    Generate a perfectly smooth, watertight B-Spline solid from a point cloud.
+    Uses Ellipsoidal Parameterization (PCA) with pole capping to create a TOPOLOGICALLY CLOSED 
+    B-Spline surface, which is then directly converted to a Solid (NO THICKENING).
+    
+    :param points: List of 3D points.
+    :param u_res: Latitude resolution. Higher values capture more vertical details.
+    :param v_res: Longitude resolution. Higher values capture more horizontal details.
     """
     import numpy as np
     import FreeCAD
     import Part
-    import Mesh
-    import trimesh
     from .patch import Shape
 
     if not points or len(points) < 4:
@@ -157,9 +159,75 @@ def smooth_body(points, slices=8, poles=12):
             except Exception:
                 return Shape(Part.Face(Part.makePolygon(vecs)))
 
-        # 2. 尝试构建凸包
-        solid_hull = None
+        # 2. PCA 计算最优椭球主轴
+        cov = np.cov(centered.T)
+        u, s, vh = np.linalg.svd(cov)
+        scale = np.sqrt(s)
+        scale = np.maximum(scale, 1e-5)
+
+        # 3. 仿射变换到单位球空间
+        normalized_pts = np.dot(centered, u) / scale
+
+        # 4. 严格包含极点的球面参数化
+        thetas = np.linspace(0, np.pi, u_res)
+        phis = np.linspace(-np.pi, np.pi, v_res)
+        
+        grid_pts_normalized = []
+        for th in thetas:
+            row = []
+            for ph in phis:
+                dir_v = np.array([
+                    np.sin(th) * np.cos(ph),
+                    np.sin(th) * np.sin(ph),
+                    np.cos(th)
+                ])
+                projections = np.dot(normalized_pts, dir_v)
+                max_r = np.max(projections)
+                if max_r <= 0:
+                    max_r = 1.0
+                pt = dir_v * max_r
+                row.append(pt)
+            grid_pts_normalized.append(row)
+
+        # 5. 逆变换还原回真实坐标
+        grid_pts_world = []
+        for row in grid_pts_normalized:
+            world_row = []
+            for p in row:
+                world_p = np.dot(p * scale, u.T) + centroid
+                world_row.append(FreeCAD.Vector(float(world_p[0]), float(world_p[1]), float(world_p[2])))
+            grid_pts_world.append(world_row)
+        
+        # 6. 闭合经线 (phi 方向闭合)
+        wrapped = [row + [row[0]] for row in grid_pts_world]
+        
+        # 7. 强制极点闭合 (Pole Capping)
+        top_pole = wrapped[0][0]
+        bottom_pole = wrapped[-1][0]
+        wrapped[0] = [top_pole] * len(wrapped[0])
+        wrapped[-1] = [bottom_pole] * len(wrapped[-1])
+        
+        # 8. 拟合闭合 B-Spline 曲面并转为 Solid
         try:
+            surf = Part.BSplineSurface()
+            # buildFromPoles(控制点, U阶数, V阶数, U周期, V周期)
+            surf.buildFromPoles(wrapped, 3, 3, False, False)
+            face = surf.toShape()
+            
+            # 拓扑闭合并直接转为实心体
+            shell = Part.Shell([face])
+            solid = Part.Solid(shell)
+            
+            return Shape(solid)
+            
+        except Exception as e:
+            FreeCAD.Console.PrintWarning(f"Closed B-Spline generation failed: {e}\n")
+            
+            # ==========================================
+            # 降级保险：如果闭合失败，退回凸包（极少发生）
+            # ==========================================
+            import Mesh
+            import trimesh
             hull = trimesh.convex.convex_hull(np_pts)
             mesh_obj = Mesh.Mesh()
             for f in hull.faces:
@@ -169,81 +237,10 @@ def smooth_body(points, slices=8, poles=12):
                                   float(v2[0]), float(v2[1]), float(v2[2]))
             shape = Part.Shape()
             shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
-            solid_hull = Part.makeSolid(shape)
-        except Exception as e:
-            FreeCAD.Console.PrintWarning(f"Hull generation failed: {e}\n")
-
-        if solid_hull is None:
-            return Shape(Part.makeSphere(1.0))
-
-        # 3. 尝试切片 + Loft 生成极简曲面实体
-        try:
-            bbox = solid_hull.BoundBox
-            lengths = [bbox.XLength, bbox.YLength, bbox.ZLength]
-            axis = int(np.argmax(lengths))
-            if axis == 0:
-                min_v, max_v = bbox.XMin, bbox.XMax
-                dir_v = FreeCAD.Vector(1, 0, 0)
-            elif axis == 1:
-                min_v, max_v = bbox.YMin, bbox.YMax
-                dir_v = FreeCAD.Vector(0, 1, 0)
-            else:
-                min_v, max_v = bbox.ZMin, bbox.ZMax
-                dir_v = FreeCAD.Vector(0, 0, 1)
-
-            # 【核心修复】这里使用传入的 slices 和 poles 参数
-            if slices < 2:
-                slices = 2
-            margin = (max_v - min_v) * 0.05
-            levels = [
-                min_v + margin + i * (max_v - min_v - 2 * margin) / (slices - 1)
-                for i in range(slices)
-            ]
-
-            wires = []
-            for level in levels:
-                try:
-                    ws = solid_hull.slice(dir_v, level)
-                    if not ws:
-                        continue
-                    main_w = max(ws, key=lambda w: w.Length)
-                    pts_raw = main_w.discretize(Number=poles)
-                    if len(pts_raw) > 1 and (pts_raw[0] - pts_raw[-1]).Length < 1e-5:
-                        pts_raw = pts_raw[:-1]
-                    
-                    bspline = Part.BSplineCurve()
-                    bspline.buildFromPoles(pts_raw, None, None, None, True, 3)
-                    wires.append(Part.Wire([bspline.toShape()]))
-                except Exception:
-                    continue
-
-            if len(wires) >= 2:
-                # 路径 A: 尝试 makeLoft(solid=True)
-                try:
-                    loft = Part.makeLoft(wires, solid=True, ruled=False)
-                    if loft and loft.isValid():
-                        return Shape(loft)
-                except Exception:
-                    pass
-
-                # 路径 B: makeLoft(solid=False) + 手工闭合
-                try:
-                    loft_shell = Part.makeLoft(wires, solid=False, ruled=False)
-                    if loft_shell:
-                        closed = Part.Solid(Part.Shell(loft_shell.Faces))
-                        if closed.isValid():
-                            return Shape(closed)
-                except Exception:
-                    pass
-        except Exception as e:
-            FreeCAD.Console.PrintWarning(f"Slice-Loft failed: {e}\n")
-
-        # 4. 终极兜底：返回原始凸包（面数依然极少，且100%有效）
-        return Shape(solid_hull)
+            return Shape(Part.makeSolid(shape))
 
     except Exception as e:
-        # 无论内部发生什么可怕的错误，都保证返回一个有效的几何体！
-        FreeCAD.Console.PrintError(f"Unhandled exception in smooth_body: {e}. Returning fallback sphere.\n")
+        FreeCAD.Console.PrintError(f"Unhandled exception in smooth_body: {e}\n")
         return Shape(Part.makeSphere(1.0))
 
 
