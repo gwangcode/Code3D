@@ -143,21 +143,21 @@ The Code3D engine comes with a rich set of built-in 3D and 2D primitives. All 3D
 
 ---
 
-# 🔬 Advanced Surface & Point-Cloud Algorithms
+**🔬 Advanced Surface & Point-Cloud Algorithms**
 
-bspline_surface(points, thickness=0.0)
+`bspline_surface(points, thickness=0.0)`
 Generates mathematically precise B-Spline surfaces from either 1D contours or 2D point grids.
 
-1D input [(x,y,z), ...]: Generates a closed B-Spline curve. If coplanar, fills it into a Face; if non-coplanar, returns a 3D Wire.
+**1D input [(x,y,z), ...]:** Generates a closed B-Spline curve. If coplanar, fills it into a Face; if non-coplanar, returns a 3D Wire.
 
-2D input [[(x,y,z), ...], ...]: Generates a standard B-Spline free-form surface.
+**2D input [[(x,y,z), ...], ...]:** Generates a standard B-Spline free-form surface.
 
-Thickness: Set thickness > 0 to solidify the resulting surface into a 3D body.
+**Thickness:** Set thickness > 0 to solidify the resulting surface into a 3D body.
 
-smooth_body(points, iterations=3)
+`smooth_body(points, iterations=3)`
 Generates a perfectly smooth, watertight, organic 3D solid from a chaotic, unordered list of 3D points.
 
-# Internal Pipeline:
+**Internal Pipeline:**
 
 Coplanarity Check: Gracefully degrades to a 2D planar face if all points lie on a plane.
 Convex Hull: Uses trimesh to find the initial bounding volume.
