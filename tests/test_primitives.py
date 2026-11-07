@@ -22,7 +22,27 @@ def setup_freecad_doc():
         FreeCAD.closeDocument(doc_name)
 
 # ==========================================
-# 1. 2D 基础函数测试 (确保数学计算不报错)
+# 1. 基础点生成测试
+# ==========================================
+def test_point_and_points():
+    """测试单点生成与点云集合生成"""
+    # 测试单个点
+    pt = primitives.point(1.0, 2.0, 3.0)
+    assert pt.ShapeType == "Vertex"
+    assert pt.isValid()
+    assert pt.X == 1.0
+    assert pt.Y == 2.0
+    assert pt.Z == 3.0
+
+    # 测试多点集合
+    pts_list = [(0,0,0), (10,10,10), (-5,5,-5)]
+    pts_cloud = primitives.points(pts_list)
+    assert pts_cloud.ShapeType == "Compound"
+    assert pts_cloud.isValid()
+
+
+# ==========================================
+# 2. 2D 基础函数测试 (确保数学计算不报错)
 # ==========================================
 def test_2d_primitives():
     """测试所有 2D 曲线和多边形函数，确保它们能正确生成 Shape2d 对象"""
@@ -43,35 +63,46 @@ def test_2d_primitives():
 
 
 # ==========================================
-# 2. 自由 2D 曲线生成测试
+# 3. 自由曲线与生成面测试
 # ==========================================
 def test_free_curve():
-    """测试自定义的自由曲线函数"""
-    # 生成一条经过 4 个点的平滑开放曲线
+    """测试自定义的自由曲线函数 (开放和闭合)"""
     pts = [(0, 0, 0), (2, 5, 0), (6, 2, 0), (10, 8, 0)]
-    curve = primitives.free_curve(pts, closed=False)
     
-    # 修复：直接使用 ShapeType 代理属性，不要加 .Shape
+    # 测试开放的线 (默认)
+    curve = primitives.free_curve(pts, closed=False)
     assert curve.ShapeType == "Wire"
     assert curve.isValid()
 
-    # 生成一条自动闭合的曲线
+    # 测试闭合的线
     closed_curve = primitives.free_curve(pts, closed=True)
     assert closed_curve.ShapeType == "Wire"
-    # 闭合的 wire 应该拥有 isClosed 为 True
     assert closed_curve.isClosed()
 
 
+def test_free_curve_make_face():
+    """测试 free_curve 直接生成面 (make_face=True)"""
+    pts = [(0, 0, 0), (10, 0, 0), (10, 10, 0), (0, 10, 0)]
+    
+    # 1. 闭合曲线生成面
+    face_closed = primitives.free_curve(pts, closed=True, make_face=True)
+    assert face_closed.ShapeType == "Face"
+    assert face_closed.isValid()
+    
+    # 2. 开放曲线强制生成面 (内部自动加一根线闭合)
+    face_open = primitives.free_curve(pts, closed=False, make_face=True)
+    assert face_open.ShapeType == "Face"
+    assert face_open.isValid()
+
+
 # ==========================================
-# 3. B-Spline 曲面生成测试 (1D 和 2D)
+# 4. B-Spline 曲面生成测试 (1D 和 2D)
 # ==========================================
 def test_bspline_surface_1d():
     """测试 1D 点集生成 B-Spline 面/线"""
     pts = [(0,0,0), (10,0,0), (15,10,0), (10,20,0), (0,20,0), (-5,10,0)]
-    
     result = primitives.bspline_surface(pts)
     
-    # 修复：直接检查 ShapeType
     assert result.ShapeType == "Face"
     assert result.isValid()
 
@@ -83,23 +114,20 @@ def test_bspline_surface_2d():
         [(0,5,2), (5,5,5), (10,5,2)],
         [(0,10,0), (5,10,2), (10,10,0)]
     ]
-    
     result = primitives.bspline_surface(pts_2d)
     
-    # 修复：直接检查 ShapeType
     assert result.ShapeType == "Face"
     assert result.isValid()
 
 
 # ==========================================
-# 4. smooth_body 稳健性测试 (防止回归)
+# 5. smooth_body 稳健性测试 (防止回归)
 # ==========================================
 def test_smooth_body_coplanar():
     """测试共面点集回退为 Face 逻辑"""
     pts = [(0,0,0), (10,0,0), (15,10,0), (10,20,0), (0,20,0), (-5,10,0)]
     result = primitives.smooth_body(pts)
     
-    # 修复：移除 isinstance 强断言，使用属性检查
     assert result.ShapeType == "Face"
     assert result.isValid()
 
@@ -109,7 +137,6 @@ def test_smooth_body_sparse_points():
     pts = [(0,0,0), (10,0,5), (15,10,-2), (10,20,8), (0,20,0), (-5,10,5)]
     result = primitives.smooth_body(pts, iterations=2)
     
-    # 修复：移除 isinstance 强断言，使用属性检查
     assert result.ShapeType in ("Solid", "CompSolid")
     assert result.isValid()
     assert result.Volume > 0
