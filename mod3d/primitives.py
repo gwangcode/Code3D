@@ -75,46 +75,6 @@ def icosahedron(a=1):
         [x2,0,x1],[-x2,0,x1],[x2,0,-x1],[-x2,0,-x1],
         [0,x1,x2],[0,-x1,x2],[0,x1,-x2],[0,-x1,-x2]])
 
-# ==========================================
-# ---- Advanced Surface & Point-Cloud Generators ----
-# ==========================================
-def bspline_surface(points, thickness=0.0):
-    """
-    Creates a closed B-spline surface from a 1D point list or a 2D grid of points.
-    """
-    if not points or len(points) == 0:
-        raise ValueError("Point list cannot be empty.")
-
-    is_1d = len(points[0]) == 3 and isinstance(points[0][0], (int, float))
-    face = None
-    
-    if is_1d:
-        vecs = [FreeCAD.Vector(p[0], p[1], p[2]) for p in points]
-        curve = Part.BSplineCurve()
-        curve.interpolate(vecs, PeriodicFlag=True)
-        wire = Part.Wire([curve.toShape()])
-        try:
-            face = Part.Face(wire)
-        except Exception:
-            return Shape(wire, primitive_data={"type": "bspline_surface_1d", "params": {"points": points}})
-    else:
-        vecs_2d = [[FreeCAD.Vector(p[0], p[1], p[2]) for p in row] for row in points]
-        surface = Part.BSplineSurface()
-        surface.interpolate(vecs_2d)
-        face = Part.Face(surface.toShape())
-
-    if thickness > 0.0 and face is not None:
-        try:
-            solid = face.thicken(thickness, 1e-5)
-            if solid.ShapeType == 'CompSolid':
-                solid = solid.Solids[0]
-            return Shape(solid)
-        except Exception as e:
-            FreeCAD.Console.PrintError(f"Failed to thicken surface: {e}\n")
-            return Shape(face)
-    
-    return Shape(face)
-
 
 def smooth_body(points, iterations=3):
     """
@@ -191,40 +151,49 @@ def smooth_body(points, iterations=3):
 
     return Shape(shape)
 
-def bspline_surface(points):
+# ==========================================
+# ---- Advanced Surface & Point-Cloud Generators ----
+# ==========================================
+def bspline_surface(points, thickness=0.0):
     """
-    Here is the English translation:
-    Generate a closed B-spline closed surface from a given set of points in 3D space. Supports two input formats:
-    1. 1D point set: [(x1, y1, z1), (x2, y2, z2), ...] -> Generates a closed B-spline curve and attempts to fill it into a surface. If the points are non-coplanar, it generates a closed wireframe.
-    2. 2D point grid: [[(x1, y1, z1), (x2, y2, z2), ...], ...] -> Generates a standard B-spline free-form surface.
+    Creates a closed B-spline surface from a 1D point list or a 2D grid of points.
     """
-    import FreeCAD
-    import Part
-    from .patch import Shape
-    
     if not points or len(points) == 0:
-        raise ValueError("点集不能为空。")
+        raise ValueError("Point list cannot be empty.")
 
     is_1d = len(points[0]) == 3 and isinstance(points[0][0], (int, float))
+    face = None
     
     if is_1d:
         vecs = [FreeCAD.Vector(p[0], p[1], p[2]) for p in points]
         curve = Part.BSplineCurve()
         curve.interpolate(vecs, PeriodicFlag=True)
-        
         wire = Part.Wire([curve.toShape()])
         try:
-            #Try converting to a face (requires all points to be coplanar).
             face = Part.Face(wire)
-            return Shape(face, primitive_data={"type": "bspline_surface_1d", "params": {"points": points}})
         except Exception:
-            # If the points are not coplanar, return the closed wireframe directly.
-            return Shape(wire, primitive_data={"type": "bspline_surface_1d", "params": {"points": points}})
+            return Shape(wire)
     else:
         vecs_2d = [[FreeCAD.Vector(p[0], p[1], p[2]) for p in row] for row in points]
         surface = Part.BSplineSurface()
         surface.interpolate(vecs_2d)
-        return Shape(surface.toShape(), primitive_data={"type": "bspline_surface_2d", "params": {"points": points}})
+        face = Part.Face(surface.toShape())
+
+    if thickness > 0.0 and face is not None:
+        try:
+            solid = face.thicken(thickness, 1e-5)
+            if solid.ShapeType == 'CompSolid':
+                solid = solid.Solids[0]
+            return Shape(solid)
+        except Exception as e:
+            FreeCAD.Console.PrintError(f"Failed to thicken surface: {e}\n")
+            return Shape(face)
+    
+    return Shape(face)
+
+
+def smooth_body(points, iterations=3):
+    # ... 保留你现有的 smooth_body 代码 ...
 
 
 
