@@ -144,6 +144,7 @@ The Code3D engine comes with a rich set of built-in 3D and 2D primitives. All 3D
 ---
 
 # 🔬 Advanced Surface & Point-Cloud Algorithms
+
 bspline_surface(points, thickness=0.0)
 Generates mathematically precise B-Spline surfaces from either 1D contours or 2D point grids.
 
