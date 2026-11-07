@@ -119,7 +119,7 @@ def bspline_surface(points, thickness=0.0):
 def smooth_body(points, u_res=20, v_res=40):
     """
     Generate a perfectly smooth, watertight B-Spline solid from a point cloud.
-    Uses Ellipsoidal Parameterization with pole capping to create a TOPOLOGICALLY CLOSED 
+    Uses Ellipsoidal Parameterization (PCA) with pole capping to create a TOPOLOGICALLY CLOSED 
     B-Spline surface, which is then directly converted to a Solid (NO THICKENING).
     """
     import numpy as np
@@ -131,7 +131,7 @@ def smooth_body(points, u_res=20, v_res=40):
         raise ValueError("At least 4 points are required to form a 3D solid.")
 
     np_pts = np.array(points)
-  
+    
     center = np.mean(np_pts, axis=0)
     relative = np_pts - center
 
@@ -172,21 +172,19 @@ def smooth_body(points, u_res=20, v_res=40):
     
     # 6. 闭合经线 (phi)
     wrapped = [row + [row[0]] for row in grid_pts_world]
-
+    
+    # 7. 强制极点闭合
     top_pole = wrapped[0][0]
     bottom_pole = wrapped[-1][0]
-    
     wrapped[0] = [top_pole] * len(wrapped[0])
     wrapped[-1] = [bottom_pole] * len(wrapped[-1])
     
     try:
         surf = Part.BSplineSurface()
-        
         surf.buildFromPoles(wrapped, 3, 3, False, False)
         face = surf.toShape()
- 
+
         shell = Part.Shell([face])
-        
         solid = Part.Solid(shell)
         
         return Shape(solid)
@@ -194,7 +192,8 @@ def smooth_body(points, u_res=20, v_res=40):
     except Exception as e:
         import FreeCAD
         FreeCAD.Console.PrintWarning(f"Closed B-Spline generation failed: {e}\n")
-   
+        
+        # 9. Fallback: 退回网格细分 (确保绝对不崩溃)
         import Mesh
         import trimesh
         
