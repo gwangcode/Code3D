@@ -291,3 +291,22 @@ def tangent(x_start=-0.5*np.pi, x_end=0.5*np.pi, step=0.1, height=100):
     y = np.tan(x)
     mask = np.abs(y) < height
     return Shape2d(np.column_stack([x[mask], y[mask]]))
+
+def free_curve(points, closed=False):
+    if not points or len(points) < 2:
+        raise ValueError("At least 2 points are required to form a curve.")
+
+    vecs = []
+    for p in points:
+        if len(p) == 2:
+            vecs.append(FreeCAD.Vector(p[0], p[1], 0))
+        elif len(p) == 3:
+            vecs.append(FreeCAD.Vector(p[0], p[1], p[2]))
+        else:
+            raise ValueError("Points must be (x,y) or (x,y,z).")
+
+    curve = Part.BSplineCurve()
+    curve.interpolate(vecs, PeriodicFlag=closed)
+    wire = Part.Wire([curve.toShape()])
+
+    return Shape(wire)
