@@ -41,7 +41,12 @@ fake_qtgui.QTextCursor = MagicMock()
 
 sys.modules.update({'PySide6': fake_pyside, 'PySide6.QtCore': fake_qtcore, 'PySide6.QtGui': fake_qtgui, 'PySide6.QtWidgets': fake_qtwidgets})
 
+# 强制清理缓存，确保加载最新的 primitives.py
 if 'terminal' in sys.modules: del sys.modules['terminal']
+if 'mod3d' in sys.modules: del sys.modules['mod3d']
+for key in list(sys.modules.keys()):
+    if key.startswith('mod3d.'):
+        del sys.modules[key]
 
 import FreeCAD
 import Part
@@ -75,10 +80,10 @@ def test_smooth_body_coplanar(term):
     assert obj.Shape.isValid(), "Generated Face is invalid."
 
 # ==========================================
-# 测试 2：稀疏点云 (生成极简面数的实体)
+# 测试 2：稀疏点云 (验证极简 Loft 特性)
 # ==========================================
 def test_smooth_body_sparse_points(term):
-    """Test sparse points (<30) generating a solid"""
+    """Test sparse points (<30) generating a solid with minimal faces"""
     term.write = MagicMock()
     pts = [(0,0,0), (10,0,5), (15,10,-2), (10,20,8), (0,20,0), (-5,10,5)]
     
@@ -91,19 +96,17 @@ def test_smooth_body_sparse_points(term):
     assert obj.Shape.Volume > 0, "Volume must be greater than 0."
     assert obj.Shape.isClosed(), "The resulting solid is not closed (leaking)."
     
-    # 验证我们成功生成了“极简”的面片，而不是无数个碎三角面
-    # 凸包切片放样，面数绝对不会超过 100 个
+    # 【核心断言】验证是极简面数（Loft 的大曲面），而不是碎成渣的网格细分
     assert len(obj.Shape.Faces) < 100, "Face count is too high, Loft may have failed and fell back to mesh."
 
 # ==========================================
-# 测试 3：密集点云 (Loft) 及 slices 参数验证
+# 测试 3：密集点云 (验证切片重采样对齐)
 # ==========================================
 def test_smooth_body_dense_points_and_slices(term):
-    """Test dense points generating a solid via Section Loft, and verify slices parameter"""
+    """Test dense points generating a solid via Section Loft, verifying slices"""
     term.write = MagicMock()
     
     pts = []
-    # 生成 49 个分布在椭球面上的点
     for i in range(7):
         for j in range(7):
             theta = np.pi * i / 6.0
@@ -113,19 +116,30 @@ def test_smooth_body_dense_points_and_slices(term):
             z = 15 * np.cos(theta)
             pts.append((x, y, z))
             
-    # 1. 用极少的切片生成 (比如切 4 刀)
+    # 1. 用极少的切片 (比如切 4 刀)
     term.execute_code(f"smooth_body({pts}, slices=4)")
     obj1 = FreeCAD.ActiveDocument.getObject("model_1")
     
+    if term.write.call_count > 0:
+        print("\n=== TERMINAL ERROR (Slices=4) ===")
+        print(term.write.call_args[0][0])
+        print("======================\n")
+        
     assert obj1 is not None, "Loft failed to generate object."
     faces_4 = len(obj1.Shape.Faces)
     
     FreeCAD.ActiveDocument.removeObject("model_1")
+    term.write.reset_mock()
     
-    # 2. 用更多的切片生成 (比如切 10 刀)
+    # 2. 用更多的切片 (比如切 10 刀)
     term.execute_code(f"smooth_body({pts}, slices=10)")
     obj2 = FreeCAD.ActiveDocument.getObject("model_1")
     
+    if term.write.call_count > 0:
+        print("\n=== TERMINAL ERROR (Slices=10) ===")
+        print(term.write.call_args[0][0])
+        print("======================\n")
+        
     assert obj2 is not None, "Loft failed to generate object."
     faces_10 = len(obj2.Shape.Faces)
     
