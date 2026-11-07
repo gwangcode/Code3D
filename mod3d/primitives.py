@@ -116,8 +116,6 @@ def bspline_surface(points, thickness=0.0):
     return Shape(face)
 
 
-import math  # 确保文件顶部有这个导入
-
 def smooth_body(points, slices=15, target_poles=30):
     """
     Generate a minimal-face, mathematically smooth B-Spline body from unordered points.
@@ -135,7 +133,6 @@ def smooth_body(points, slices=15, target_poles=30):
 
     np_pts = np.array(points)
 
-    # 1. Coplanarity check
     centroid = np_pts.mean(axis=0)
     centered_pts = np_pts - centroid
     u, s, vh = np.linalg.svd(centered_pts)
@@ -151,7 +148,6 @@ def smooth_body(points, slices=15, target_poles=30):
         except Exception:
             return Shape(Part.makePolygon([FreeCAD.Vector(*p) for p in points]))
 
-    # 2. Calculate Convex Hull
     hull = trimesh.convex.convex_hull(np_pts)
     mesh_obj = Mesh.Mesh()
     for f in hull.faces:
@@ -163,7 +159,6 @@ def smooth_body(points, slices=15, target_poles=30):
     shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
     solid_hull = Part.makeSolid(shape)
 
-    # 3. Auto-detect the longest axis
     bbox = solid_hull.BoundBox
     lengths = [bbox.XLength, bbox.YLength, bbox.ZLength]
     axis = int(np.argmax(lengths))
@@ -181,24 +176,29 @@ def smooth_body(points, slices=15, target_poles=30):
     margin = (max_val - min_val) * 0.01
     levels = np.linspace(min_val + margin, max_val - margin, slices)
     
-    # 4. Slice and Resample
     all_sections_points = []
-    
+
     for level in levels:
         wires = solid_hull.slice(slice_dir, level)
-        
         if not wires:
             continue
             
-        main_wire = max(wires, key=lambda w: w.Length)
+        valid_wires = [w for w in wires if w.Length > (max_val - min_val) * 0.05]
+        if not valid_wires:
+            continue
+            
+        main_wire = max(valid_wires, key=lambda w: w.Length)
         
         pts = main_wire.discretize(Number=target_poles)
+        
+        if len(pts) > 1 and (pts[0] - pts[-1]).Length < 1e-5:
+            pts = pts[:-1]
+            
         all_sections_points.append(list(pts))
 
     if len(all_sections_points) < 2:
-        return Shape(solid_hull)
+        return _fallback_smooth_mesh(hull)
 
-    # 5. Align Orientations
     base_sect = all_sections_points[0]
     base_center = FreeCAD.Vector(
         sum(p.x for p in base_sect)/len(base_sect), 
@@ -224,7 +224,6 @@ def smooth_body(points, slices=15, target_poles=30):
         if score_reversed > score_normal:
             curr_sect.reverse()
 
-    # 6. Align Start Points
     final_sections = [base_sect]
     for s_idx in range(1, len(all_sections_points)):
         curr_sect = all_sections_points[s_idx]
@@ -241,7 +240,6 @@ def smooth_body(points, slices=15, target_poles=30):
         aligned_sect = curr_sect[best_idx:] + curr_sect[:best_idx]
         final_sections.append(aligned_sect)
 
-    # 7. Create B-Spline Wires and Loft
     smooth_wires = []
     for sect in final_sections:
         try:
@@ -256,11 +254,39 @@ def smooth_body(points, slices=15, target_poles=30):
             loft_solid = Part.makeLoft(smooth_wires, solid=True, ruled=False)
             if loft_solid and loft_solid.isValid():
                 return Shape(loft_solid)
-        except Exception:
-            pass
+        except Exception as e:
+            # 打印出具体的报错，方便调试
+            FreeCAD.Console.PrintWarning(f"Loft failed: {e}\n")
 
-    # 8. Ultimate Fallback
-    return Shape(solid_hull)
+    return _fallback_smooth_mesh(hull)
+
+def _fallback_smooth_mesh(hull_mesh):
+    import Mesh
+    import Part
+    from .patch import Shape
+    
+    smooth_mesh = hull_mesh.copy()
+    for _ in range(3):
+        smooth_mesh = smooth_mesh.subdivide()
+        
+    try:
+        import trimesh
+        smoothed_mesh = trimesh.smoothing.filter_taubin(smooth_mesh, lamb=0.5, nu=-0.53, iterations=10)
+        vertices = smoothed_mesh.vertices
+        faces = smoothed_mesh.faces
+    except Exception:
+        vertices = hull_mesh.vertices
+        faces = hull_mesh.faces
+
+    mesh_obj = Mesh.Mesh()
+    for f in faces:
+        v0, v1, v2 = vertices[f[0]], vertices[f[1]], vertices[f[2]]
+        mesh_obj.addFacet(float(v0[0]), float(v0[1]), float(v0[2]),
+                          float(v1[0]), float(v1[1]), float(v1[2]),
+                          float(v2[0]), float(v2[1]), float(v2[2]))
+    shape = Part.Shape()
+    shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
+    return Shape(Part.makeSolid(shape))
 
 # ==========================================
 # ---- 2D primitives ----
