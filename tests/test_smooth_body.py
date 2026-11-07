@@ -18,6 +18,7 @@ def add_freecad_to_path():
 add_freecad_to_path()
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+# 假 PySide 环境
 class DummyQPlainTextEdit:
     NoWrap = 0
     def __init__(self, *args, **kwargs): pass
@@ -56,7 +57,9 @@ def term():
     yield term
     FreeCAD.closeDocument("SmoothBodyTestDoc")
 
-
+# ==========================================
+# 测试 1：共面点集生成 2D 曲面
+# ==========================================
 def test_smooth_body_coplanar(term):
     """Test coplanar points generating a 2D face"""
     term.write = MagicMock() 
@@ -67,8 +70,11 @@ def test_smooth_body_coplanar(term):
     assert obj.Shape.ShapeType == "Face", "Coplanar points should generate a Face."
     assert obj.Shape.isValid(), "Generated Face is invalid."
 
+# ==========================================
+# 测试 2：稀疏点云生成极简曲面的实体
+# ==========================================
 def test_smooth_body_sparse_points(term):
-    """Test sparse points generating a valid closed solid"""
+    """Test sparse points generating a solid with minimal B-Spline faces"""
     term.write = MagicMock()
     pts = [(0,0,0), (10,0,5), (15,10,-2), (10,20,8), (0,20,0), (-5,10,5)]
     term.execute_code(f"smooth_body({pts})")
@@ -78,9 +84,15 @@ def test_smooth_body_sparse_points(term):
     assert obj.Shape.isValid(), "Generated solid is invalid."
     assert obj.Shape.Volume > 0, "Volume must be greater than 0."
     assert obj.Shape.isClosed(), "The resulting solid is not closed (leaking)."
+    
+    # 【核心断言】验证生成的是少量曲面，而不是几万个网格小三角
+    assert len(obj.Shape.Faces) < 200, "Face count is too high, Loft may have failed."
 
+# ==========================================
+# 测试 3：密集点云生成极简曲面的实体
+# ==========================================
 def test_smooth_body_dense_points(term):
-    """Test dense points generating a valid closed solid"""
+    """Test dense points generating a solid with minimal B-Spline faces"""
     term.write = MagicMock()
     pts = []
     for i in range(7):
@@ -99,7 +111,13 @@ def test_smooth_body_dense_points(term):
     assert obj.Shape.isValid(), "Generated solid is invalid."
     assert obj.Shape.isClosed(), "The resulting solid is not closed (leaking)."
     assert obj.Shape.Volume > 0, "Volume must be greater than 0."
+    
+    # 【核心断言】验证面数极少
+    assert len(obj.Shape.Faces) < 200, "Face count is too high, Loft may have failed."
 
+# ==========================================
+# 测试 4：点数不足时的异常处理
+# ==========================================
 def test_smooth_body_insufficient_points(term):
     """Test exception handling when there are fewer than 4 points"""
     term.write = MagicMock()
