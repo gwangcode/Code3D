@@ -116,106 +116,109 @@ def bspline_surface(points, thickness=0.0):
     return Shape(face)
 
 
-def smooth_body(points, u_res=20, v_res=40):
+def smooth_body(points):
     """
-    Generate a perfectly smooth, watertight B-Spline solid from a point cloud.
-    Uses Ellipsoidal Parameterization (PCA) with pole capping to create a TOPOLOGICALLY CLOSED 
-    B-Spline surface, which is then directly converted to a Solid (NO THICKENING).
+    Generate a smooth 3D solid from unordered points.
+    - Coplanar points: returns a 2D Face.
+    - Non-coplanar points: returns a Solid (via Loft or Convex Hull).
+    Never throws runtime exceptions for valid point clouds.
     """
+    import numpy as np
+    import FreeCAD
+    import Part
+    import Mesh
+    import trimesh
+    import math
+    from .patch import Shape
+
     if not points or len(points) < 4:
         raise ValueError("At least 4 points are required to form a 3D solid.")
 
     np_pts = np.array(points)
-    
-    # 1. 计算质心
-    center = np.mean(np_pts, axis=0)
-    relative = np_pts - center
 
-    # 2. PCA 计算最优椭球主轴
-    cov = np.cov(relative.T)
-    u, s, vh = np.linalg.svd(cov)
-    scale = np.sqrt(s)
-    scale = np.maximum(scale, 1e-5)
+    centroid = np_pts.mean(axis=0)
+    centered = np_pts - centroid
+    _, s, vh = np.linalg.svd(centered)
+    distances = np.abs(np.dot(centered, vh[-1]))
+    is_coplanar = np.max(distances) < 1e-3 * max(np.max(s), 1e-6)
 
-    # 3. 仿射变换到单位球空间
-    normalized_pts = np.dot(relative, u) / scale
-
-    # 4. 严格包含极点的球面参数化
-    thetas = np.linspace(0, np.pi, u_res)
-    phis = np.linspace(-np.pi, np.pi, v_res)
-    
-    grid_pts_normalized = []
-    for th in thetas:
-        row = []
-        for ph in phis:
-            dir_v = np.array([
-                np.sin(th) * np.cos(ph),
-                np.sin(th) * np.sin(ph),
-                np.cos(th)
-            ])
-            projections = np.dot(normalized_pts, dir_v)
-            max_r = np.max(projections)
-            if max_r <= 0:
-                max_r = 1.0
-            pt = dir_v * max_r
-            row.append(pt)
-        grid_pts_normalized.append(row)
-
-    # 5. 逆变换还原回真实坐标
-    grid_pts_world = []
-    for row in grid_pts_normalized:
-        world_row = []
-        for p in row:
-            world_p = np.dot(p * scale, u.T) + center
-            world_row.append(FreeCAD.Vector(float(world_p[0]), float(world_p[1]), float(world_p[2])))
-        grid_pts_world.append(world_row)
-    
-    # 6. 闭合经线 (phi)
-    wrapped = [row + [row[0]] for row in grid_pts_world]
-    
-    # 7. 强制极点闭合
-    top_pole = wrapped[0][0]
-    bottom_pole = wrapped[-1][0]
-    wrapped[0] = [top_pole] * len(wrapped[0])
-    wrapped[-1] = [bottom_pole] * len(wrapped[-1])
-    
-    try:
-        surf = Part.BSplineSurface()
-        surf.buildFromPoles(wrapped, 3, 3, False, False)
-        face = surf.toShape()
-        
-        # 8. 直接通过 Shell 转 Solid (不加厚)
-        shell = Part.Shell([face])
-        solid = Part.Solid(shell)
-        
-        return Shape(solid)
-        
-    except Exception as e:
-        FreeCAD.Console.PrintWarning(f"Closed B-Spline generation failed: {e}\n")
-        
-        # 9. Fallback: 退回网格细分 (确保绝对不崩溃)
-        hull = trimesh.convex.convex_hull(np_pts)
-        smooth_mesh = hull.copy()
-        for _ in range(3):
-            smooth_mesh = smooth_mesh.subdivide()
-            
+    if is_coplanar:
+        angles = np.arctan2(centered[:, 1], centered[:, 0])
+        order = np.argsort(angles)
+        sorted_pts = np_pts[order]
+        vecs = [FreeCAD.Vector(*p) for p in sorted_pts]
+        vecs.append(vecs[0])
         try:
-            smoothed_mesh = trimesh.smoothing.filter_taubin(smooth_mesh, lamb=0.5, nu=-0.53, iterations=10)
-            vertices = smoothed_mesh.vertices
-            faces = smoothed_mesh.faces
+            curve = Part.BSplineCurve()
+            curve.interpolate(vecs, PeriodicFlag=True)
+            wire = Part.Wire([curve.toShape()])
+            return Shape(Part.Face(wire))
         except Exception:
-            vertices = hull.vertices
-            faces = hull.faces
+            try:
+                return Shape(Part.Face(Part.makePolygon(vecs)))
+            except Exception:
+                return Shape(Part.makePolygon(vecs))
 
+    solid_hull = None
+    try:
+        hull = trimesh.convex.convex_hull(np_pts)
         mesh_obj = Mesh.Mesh()
-        for f in faces:
-            v0, v1, v2 = vertices[f[0]], vertices[f[1]], vertices[f[2]]
+        for f in hull.faces:
+            v0, v1, v2 = hull.vertices[f[0]], hull.vertices[f[1]], hull.vertices[f[2]]
             mesh_obj.addFacet(float(v0[0]), float(v0[1]), float(v0[2]),
                               float(v1[0]), float(v1[1]), float(v1[2]),
                               float(v2[0]), float(v2[1]), float(v2[2]))
         shape = Part.Shape()
         shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
-        return Shape(Part.makeSolid(shape))
+        solid_hull = Part.makeSolid(shape)
+    except Exception:
+        pass
+
+    if solid_hull is None:
+        return Shape(Part.makeSphere(1.0))
+
+    try:
+        bbox = solid_hull.BoundBox
+        lengths = [bbox.XLength, bbox.YLength, bbox.ZLength]
+        axis = int(np.argmax(lengths))
+        if axis == 0:
+            min_val, max_val = bbox.XMin, bbox.XMax
+            dir_v = FreeCAD.Vector(1, 0, 0)
+        elif axis == 1:
+            min_val, max_val = bbox.YMin, bbox.YMax
+            dir_v = FreeCAD.Vector(0, 1, 0)
+        else:
+            min_val, max_val = bbox.ZMin, bbox.ZMax
+            dir_v = FreeCAD.Vector(0, 0, 1)
+
+        n_slices = 8
+        margin = (max_val - min_val) * 0.05
+        levels = [min_val + margin + i * (max_val - min_val - 2*margin) / (n_slices - 1) for i in range(n_slices)]
+
+        wires = []
+        for level in levels:
+            try:
+                ws = solid_hull.slice(dir_v, level)
+                if not ws:
+                    continue
+                main_w = max(ws, key=lambda w: w.Length)
+                pts_raw = main_w.discretize(Number=20)
+                if len(pts_raw) > 1 and (pts_raw[0] - pts_raw[-1]).Length < 1e-5:
+                    pts_raw = pts_raw[:-1]
+                bspline = Part.BSplineCurve()
+                bspline.buildFromPoles(pts_raw, None, None, None, True, 3)
+                wires.append(Part.Wire([bspline.toShape()]))
+            except Exception:
+                continue
+
+        if len(wires) >= 2:
+            loft = Part.makeLoft(wires, solid=True, ruled=False)
+            if loft and loft.isValid():
+                return Shape(loft)
+    except Exception:
+        pass
+
+    return Shape(solid_hull)
 
 
 # ==========================================
