@@ -116,19 +116,19 @@ def bspline_surface(points, thickness=0.0):
     return Shape(face)
 
 
-def smooth_body(points):
+def smooth_body(points, slices=8, poles=12):
     """
-    Generate a smooth 3D solid from unordered points.
-    - Coplanar points: returns a 2D Face.
-    - Non-coplanar points: returns a Solid (via Loft or Convex Hull).
-    Never throws runtime exceptions for valid point clouds.
+    Generate a minimal-face, B-Spline body from unordered points.
+    Strategy: PCA ellipsoid parameterization -> Slice -> Fit B-Spline wires -> Loft.
+    - primary: makeLoft(solid=True)
+    - secondary: makeLoft(solid=False) + manual shell closure
+    - fallback: raw convex hull solid
     """
     import numpy as np
     import FreeCAD
     import Part
     import Mesh
     import trimesh
-    import math
     from .patch import Shape
 
     if not points or len(points) < 4:
@@ -182,18 +182,22 @@ def smooth_body(points):
         lengths = [bbox.XLength, bbox.YLength, bbox.ZLength]
         axis = int(np.argmax(lengths))
         if axis == 0:
-            min_val, max_val = bbox.XMin, bbox.XMax
+            min_v, max_v = bbox.XMin, bbox.XMax
             dir_v = FreeCAD.Vector(1, 0, 0)
         elif axis == 1:
-            min_val, max_val = bbox.YMin, bbox.YMax
+            min_v, max_v = bbox.YMin, bbox.YMax
             dir_v = FreeCAD.Vector(0, 1, 0)
         else:
-            min_val, max_val = bbox.ZMin, bbox.ZMax
+            min_v, max_v = bbox.ZMin, bbox.ZMax
             dir_v = FreeCAD.Vector(0, 0, 1)
 
-        n_slices = 8
-        margin = (max_val - min_val) * 0.05
-        levels = [min_val + margin + i * (max_val - min_val - 2*margin) / (n_slices - 1) for i in range(n_slices)]
+        margin = (max_v - min_v) * 0.05
+        if slices < 2:
+            slices = 2
+        levels = [
+            min_v + margin + i * (max_v - min_v - 2 * margin) / (slices - 1)
+            for i in range(slices)
+        ]
 
         wires = []
         for level in levels:
@@ -202,9 +206,11 @@ def smooth_body(points):
                 if not ws:
                     continue
                 main_w = max(ws, key=lambda w: w.Length)
-                pts_raw = main_w.discretize(Number=20)
+                pts_raw = main_w.discretize(Number=poles)
                 if len(pts_raw) > 1 and (pts_raw[0] - pts_raw[-1]).Length < 1e-5:
                     pts_raw = pts_raw[:-1]
+                if len(pts_raw) < 4:
+                    continue
                 bspline = Part.BSplineCurve()
                 bspline.buildFromPoles(pts_raw, None, None, None, True, 3)
                 wires.append(Part.Wire([bspline.toShape()]))
@@ -212,12 +218,25 @@ def smooth_body(points):
                 continue
 
         if len(wires) >= 2:
-            loft = Part.makeLoft(wires, solid=True, ruled=False)
-            if loft and loft.isValid():
-                return Shape(loft)
+            try:
+                loft = Part.makeLoft(wires, solid=True, ruled=False)
+                if loft and loft.isValid() and loft.ShapeType in ("Solid", "CompSolid"):
+                    return Shape(loft)
+            except Exception:
+                pass
+
+            try:
+                loft_shell = Part.makeLoft(wires, solid=False, ruled=False)
+                if loft_shell:
+                    closed = Part.Solid(Part.Shell(loft_shell.Faces))
+                    if closed.isValid():
+                        return Shape(closed)
+            except Exception:
+                pass
     except Exception:
         pass
 
+    # --- 终极兜底：返回原始凸包（面数仍然极少，几十个面）---
     return Shape(solid_hull)
 
 
