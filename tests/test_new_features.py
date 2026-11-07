@@ -5,7 +5,6 @@ import types
 from unittest.mock import MagicMock, patch
 import numpy as np
 
-# 动态探测 FreeCAD 路径
 def add_freecad_to_path():
     if 'CONDA_PREFIX' in os.environ:
         prefix = os.environ['CONDA_PREFIX']
@@ -19,7 +18,6 @@ def add_freecad_to_path():
 add_freecad_to_path()
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# 假 PySide 环境
 class DummyQPlainTextEdit:
     NoWrap = 0
     def __init__(self, *args, **kwargs): pass
@@ -58,24 +56,15 @@ def term():
     yield term
     FreeCAD.closeDocument("TestDoc")
 
-# ==========================================
-# 测试 runf 脚本执行
-# ==========================================
 def test_runf(term, tmp_path):
     term.write = MagicMock()
     
     script_file = tmp_path / "my_script.py"
-    script_content = "a = cube(10)\nshow(a, 'TestBox')\n"
-    script_file.write_text(script_content)
+    script_file.write_text("a = cube(10)\nshow(a, 'TestBox')\n")
     
     term.execute_code(f'runf(r"{script_file}")')
-    
-    if term.write.call_count > 0:
-        print("\n=== TERMINAL ERROR ===")
-        print(term.write.call_args[0][0])
-        print("======================\n")
         
-    # 【核心修复】遍历所有文档查找 TestBox
+    # 【核心修复】遍历全宇宙的文档寻找 TestBox
     found = False
     for doc_name, doc in FreeCAD.listDocuments().items():
         if doc.getObject("TestBox"):
@@ -83,5 +72,3 @@ def test_runf(term, tmp_path):
             break
             
     assert found, "runf 执行失败，未生成脚本中的对象"
-
-# ... (其他测试保持不变：test_bspline_surface_1d, test_bspline_surface_2d, test_2d_shape_display, test_clear_command, test_copy_selected_logic) ...
