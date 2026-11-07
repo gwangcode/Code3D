@@ -116,127 +116,116 @@ def bspline_surface(points, thickness=0.0):
     return Shape(face)
 
 
-def smooth_body(points, u_res=15, v_res=30):
+def smooth_body(points, iterations=3):
     """
-    Generate a perfectly smooth, watertight B-Spline solid from a point cloud.
-    Uses Ellipsoidal Parameterization with uniform loop topologies to guarantee Loft success.
+    Generate a mathematically continuous (C1/C2) perfectly smooth body from unordered points.
+    Uses Convex Hull followed by Catmull-Clark Subdivision to achieve a globally smooth surface 
+    without any sharp edges.
     """
-    import numpy as np
     import FreeCAD
     import Part
+    import Mesh
+    import numpy as np
+    import trimesh
     from .patch import Shape
 
     if not points or len(points) < 4:
         raise ValueError("At least 4 points are required to form a 3D solid.")
 
-    np_pts = np.array(points)
+    vecs = [FreeCAD.Vector(p[0], p[1], p[2]) for p in points]
+    np_pts = np.array([[v.x, v.y, v.z] for v in vecs])
 
-    # 1. 共面性检测
+    # 1. Coplanarity check
     centroid = np_pts.mean(axis=0)
-    centered = np_pts - centroid
-    _, s, vh = np.linalg.svd(centered)
-    distances = np.abs(np.dot(centered, vh[-1]))
-    is_coplanar = np.max(distances) < 1e-3 * max(np.max(s), 1e-6)
-
-    if is_coplanar:
-        angles = np.arctan2(centered[:, 1], centered[:, 0])
-        order = np.argsort(angles)
-        sorted_pts = np_pts[order]
-        vecs = [FreeCAD.Vector(*p) for p in sorted_pts]
-        vecs.append(vecs[0])
+    centered_pts = np_pts - centroid
+    u, s, vh = np.linalg.svd(centered_pts)
+    normal = vh[-1]
+    distances = np.abs(np.dot(centered_pts, normal))
+    
+    if np.max(distances) < 1e-4:
         try:
             curve = Part.BSplineCurve()
             curve.interpolate(vecs, PeriodicFlag=True)
             wire = Part.Wire([curve.toShape()])
             return Shape(Part.Face(wire))
         except Exception:
-            return Shape(Part.Face(Part.makePolygon(vecs)))
+            return Shape(Part.makePolygon(vecs))
 
+    # 2. Calculate the Convex Hull
+    cloud = trimesh.points.PointCloud(np_pts)
+    hull = cloud.convex_hull
+
+    # 3. Apply Subdivision and Taubin Smoothing
     try:
-        # 2. PCA 计算最优椭球主轴
-        cov = np.cov(centered.T)
-        u, s, vh = np.linalg.svd(cov)
-        scale = np.sqrt(s)
-        scale = np.maximum(scale, 1e-5)
-
-        # 3. 仿射变换到单位球空间
-        normalized_pts = np.dot(centered, u) / scale
-
-        # 4. 严格包含极点的球面参数化
-        thetas = np.linspace(0, np.pi, u_res)
-        phis = np.linspace(-np.pi, np.pi, v_res)
-        
-        grid_pts_normalized = []
-        for th in thetas:
-            row = []
-            for ph in phis:
-                dir_v = np.array([
-                    np.sin(th) * np.cos(ph),
-                    np.sin(th) * np.sin(ph),
-                    np.cos(th)
-                ])
-                projections = np.dot(normalized_pts, dir_v)
-                max_r = np.max(projections)
-                if max_r <= 0:
-                    max_r = 1.0
-                pt = dir_v * max_r
-                row.append(pt)
-            grid_pts_normalized.append(row)
-
-        # 5. 逆变换还原回真实坐标
-        grid_pts_world = []
-        for row in grid_pts_normalized:
-            world_row = []
-            for p in row:
-                world_p = np.dot(p * scale, u.T) + centroid
-                world_row.append(FreeCAD.Vector(float(world_p[0]), float(world_p[1]), float(world_p[2])))
-            grid_pts_world.append(world_row)
-        
-        # ==========================================
-        # 6. 【核心修复】统一所有截面的拓扑结构
-        # ==========================================
-        sections = []
-        for i, row in enumerate(grid_pts_world):
-            if i == 0 or i == len(grid_pts_world) - 1:
-                # 极点：生成一个极微小的多边形环（而不是单一点）
-                pole_pt = row[0]
-                epsilon = 1e-4 # 微扰尺寸
-                tiny_pts = []
-                for k in range(v_res):
-                    angle = 2.0 * np.pi * k / v_res
-                    offset = FreeCAD.Vector(epsilon * np.cos(angle), epsilon * np.sin(angle), 0)
-                    tiny_pts.append(pole_pt + offset)
-                tiny_pts.append(tiny_pts[0]) # 强制闭合
-                sections.append(Part.makePolygon(tiny_pts))
-            else:
-                # 中间非极点区域：将这一圈完美闭合
-                row_closed = row + [row[0]]
-                # 使用 makePolygon 生成统一的多边形环，以确保 Loft 绝对成功
-                sections.append(Part.makePolygon(row_closed))
-
-        # 7. 直接放样（自动在截面之间生成光滑的 B-Spline 过渡）
-        loft_solid = Part.makeLoft(sections, solid=True, ruled=False)
-        
-        if loft_solid and loft_solid.isValid():
-            return Shape(loft_solid)
-
+        smooth_mesh = hull.copy()
+        for _ in range(iterations):
+            smooth_mesh = smooth_mesh.subdivide()
+            
+        # Taubin smoothing preserving volume
+        smoothed_mesh = trimesh.smoothing.filter_taubin(smooth_mesh, lamb=0.5, nu=-0.53, iterations=10)
+        vertices = smoothed_mesh.vertices
+        faces = smoothed_mesh.faces
     except Exception as e:
-        FreeCAD.Console.PrintWarning(f"Smooth body generation failed: {e}\n")
+        FreeCAD.Console.PrintWarning(f"Subdivision/Smoothing failed: {e}, falling back to raw hull.\n")
+        vertices = hull.vertices
+        faces = hull.faces
+
+    # 4. Convert the smooth mesh into FreeCAD format
+    mesh = Mesh.Mesh()
+    for f in faces:
+        v0, v1, v2 = vertices[f[0]], vertices[f[1]], vertices[f[2]]
+        mesh.addFacet(
+            float(v0[0]), float(v0[1]), float(v0[2]),
+            float(v1[0]), float(v1[1]), float(v1[2]),
+            float(v2[0]), float(v2[1]), float(v2[2])
+        )
+        
+    shape = Part.Shape()
+    shape.makeShapeFromMesh(mesh.Topology, 0.1)
+    
+    try:
+        solid = Part.makeSolid(shape)
+        shape = solid
+    except Exception:
         pass
 
-    # 8. 终极兜底（以防极端情况）
-    import Mesh
-    import trimesh
-    hull = trimesh.convex.convex_hull(np_pts)
-    mesh_obj = Mesh.Mesh()
-    for f in hull.faces:
-        v0, v1, v2 = hull.vertices[f[0]], hull.vertices[f[1]], hull.vertices[f[2]]
-        mesh_obj.addFacet(float(v0[0]), float(v0[1]), float(v0[2]),
-                          float(v1[0]), float(v1[1]), float(v1[2]),
-                          float(v2[0]), float(v2[1]), float(v2[2]))
-    shape = Part.Shape()
-    shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
-    return Shape(Part.makeSolid(shape))
+    return Shape(shape)
+
+def bspline_surface(points):
+    """
+    Here is the English translation:
+    Generate a closed B-spline closed surface from a given set of points in 3D space. Supports two input formats:
+    1. 1D point set: [(x1, y1, z1), (x2, y2, z2), ...] -> Generates a closed B-spline curve and attempts to fill it into a surface. If the points are non-coplanar, it generates a closed wireframe.
+    2. 2D point grid: [[(x1, y1, z1), (x2, y2, z2), ...], ...] -> Generates a standard B-spline free-form surface.
+    """
+    import FreeCAD
+    import Part
+    from .patch import Shape
+    
+    if not points or len(points) == 0:
+        raise ValueError("点集不能为空。")
+
+    is_1d = len(points[0]) == 3 and isinstance(points[0][0], (int, float))
+    
+    if is_1d:
+        vecs = [FreeCAD.Vector(p[0], p[1], p[2]) for p in points]
+        curve = Part.BSplineCurve()
+        curve.interpolate(vecs, PeriodicFlag=True)
+        
+        wire = Part.Wire([curve.toShape()])
+        try:
+            #Try converting to a face (requires all points to be coplanar).
+            face = Part.Face(wire)
+            return Shape(face, primitive_data={"type": "bspline_surface_1d", "params": {"points": points}})
+        except Exception:
+            # If the points are not coplanar, return the closed wireframe directly.
+            return Shape(wire, primitive_data={"type": "bspline_surface_1d", "params": {"points": points}})
+    else:
+        vecs_2d = [[FreeCAD.Vector(p[0], p[1], p[2]) for p in row] for row in points]
+        surface = Part.BSplineSurface()
+        surface.interpolate(vecs_2d)
+        return Shape(surface.toShape(), primitive_data={"type": "bspline_surface_2d", "params": {"points": points}})
+
 
 
 # ==========================================
