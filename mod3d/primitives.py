@@ -292,7 +292,7 @@ def tangent(x_start=-0.5*np.pi, x_end=0.5*np.pi, step=0.1, height=100):
     mask = np.abs(y) < height
     return Shape2d(np.column_stack([x[mask], y[mask]]))
 
-def free_curve(points, closed=True):
+def free_curve(points, closed=True, make_face=True):
     if not points or len(points) < 2:
         raise ValueError("At least 2 points are required to form a curve.")
 
@@ -308,5 +308,16 @@ def free_curve(points, closed=True):
     curve = Part.BSplineCurve()
     curve.interpolate(vecs, PeriodicFlag=closed)
     wire = Part.Wire([curve.toShape()])
+
+    if make_face:
+        if not closed:
+            line = Part.makeLine(vecs[-1], vecs[0])
+            wire = Part.Wire([wire, line])
+        try:
+            face = Part.Face(wire)
+            return Shape(face)
+        except Exception as e:
+            FreeCAD.Console.PrintWarning(f"Failed to create face: {e}. Returning wire instead.\n")
+            return Shape(wire)
 
     return Shape(wire)
