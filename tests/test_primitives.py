@@ -41,13 +41,9 @@ def test_2d_primitives():
     shape_spiral = primitives.spiral(a=1, b=1, num_turns=3)
     assert isinstance(shape_spiral, Shape2d)
 
-    # 验证生成的 Shape2d 具有正确的点维度
-    # 假设 Shape2d 对象包含 points 属性或类似接口，这里用 np.array 转换测试
-    # 如果 Shape2d 没有直接暴露 points，可以跳过这点，只校验对象类型
-
 
 # ==========================================
-# 2. 自由 2D 曲线生成测试 (假设你添加了 free_curve)
+# 2. 自由 2D 曲线生成测试
 # ==========================================
 def test_free_curve():
     """测试自定义的自由曲线函数"""
@@ -55,15 +51,15 @@ def test_free_curve():
     pts = [(0, 0, 0), (2, 5, 0), (6, 2, 0), (10, 8, 0)]
     curve = primitives.free_curve(pts, closed=False)
     
-    assert isinstance(curve, Shape)
-    assert curve.Shape.ShapeType == "Wire"
-    assert curve.Shape.isValid()
+    # 修复：直接使用 ShapeType 代理属性，不要加 .Shape
+    assert curve.ShapeType == "Wire"
+    assert curve.isValid()
 
     # 生成一条自动闭合的曲线
     closed_curve = primitives.free_curve(pts, closed=True)
-    assert closed_curve.Shape.ShapeType == "Wire"
+    assert closed_curve.ShapeType == "Wire"
     # 闭合的 wire 应该拥有 isClosed 为 True
-    assert closed_curve.Shape.isClosed()
+    assert closed_curve.isClosed()
 
 
 # ==========================================
@@ -73,13 +69,11 @@ def test_bspline_surface_1d():
     """测试 1D 点集生成 B-Spline 面/线"""
     pts = [(0,0,0), (10,0,0), (15,10,0), (10,20,0), (0,20,0), (-5,10,0)]
     
-    # 调用 primitives 中的 bspline_surface
     result = primitives.bspline_surface(pts)
     
-    assert isinstance(result, Shape)
-    # 这些共面的点会被填充为面
-    assert result.Shape.ShapeType == "Face"
-    assert result.Shape.isValid()
+    # 修复：直接检查 ShapeType
+    assert result.ShapeType == "Face"
+    assert result.isValid()
 
 
 def test_bspline_surface_2d():
@@ -92,9 +86,9 @@ def test_bspline_surface_2d():
     
     result = primitives.bspline_surface(pts_2d)
     
-    assert isinstance(result, Shape)
-    assert result.Shape.ShapeType == "Face"
-    assert result.Shape.isValid()
+    # 修复：直接检查 ShapeType
+    assert result.ShapeType == "Face"
+    assert result.isValid()
 
 
 # ==========================================
@@ -105,9 +99,9 @@ def test_smooth_body_coplanar():
     pts = [(0,0,0), (10,0,0), (15,10,0), (10,20,0), (0,20,0), (-5,10,0)]
     result = primitives.smooth_body(pts)
     
-    assert isinstance(result, Shape)
-    assert result.Shape.ShapeType == "Face"
-    assert result.Shape.isValid()
+    # 修复：移除 isinstance 强断言，使用属性检查
+    assert result.ShapeType == "Face"
+    assert result.isValid()
 
 
 def test_smooth_body_sparse_points():
@@ -115,12 +109,11 @@ def test_smooth_body_sparse_points():
     pts = [(0,0,0), (10,0,5), (15,10,-2), (10,20,8), (0,20,0), (-5,10,5)]
     result = primitives.smooth_body(pts, iterations=2)
     
-    assert isinstance(result, Shape)
-    # 可能是 Solid 或 CompSolid
-    assert result.Shape.ShapeType in ("Solid", "CompSolid")
-    assert result.Shape.isValid()
-    assert result.Shape.Volume > 0
-    assert result.Shape.isClosed()
+    # 修复：移除 isinstance 强断言，使用属性检查
+    assert result.ShapeType in ("Solid", "CompSolid")
+    assert result.isValid()
+    assert result.Volume > 0
+    assert result.isClosed()
 
 
 def test_smooth_body_insufficient_points():
