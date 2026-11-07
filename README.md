@@ -1,9 +1,3 @@
-我已经基于你提供的最新文件进行了精准更新，补全了缺失的 `point`、`points`，为 `free_curve` 增加了 `make_face` 选项，并顺手修复了你原文中 `free_curve` 示例里 `closed=True` 的笔误。整体排版完全保持你给定的原样。
-
-以下是更新后的完整 `README.md`：
-
----
-
 # Code3D Workbench for FreeCAD
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
