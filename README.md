@@ -93,7 +93,7 @@ smooth_body(pts)
 **6. Generate Free-Form 2D/3D Curves:**
 ```python
 # Create a smooth open curve passing through specific points
-free_curve([(0,0), (5,5), (10,0), (15,10)], closed=False)
+free_curve([(0,0), (5,5), (10,0), (15,10)], closed=True)
 
 # Create a closed heart-like shape
 free_curve([(0,0), (10,-5), (15,5), (5,15), (-5,5)], closed=True)
@@ -120,6 +120,7 @@ Our terminal is designed to feel just like a native code REPL:
 | `Shift + Enter` | Force a new line without executing (enters `...` mode). |
 | `clear` or `cls` | Clear the entire terminal screen. |
 | `runf("path")` | Execute an external Python file in the terminal context. |
+| `part("name")` | Retrieve a body/shape by name |
 
 *(Note: The terminal automatically protects the `>>> ` prompt. You cannot accidentally delete it with Backspace or move the cursor past it.)*
 
