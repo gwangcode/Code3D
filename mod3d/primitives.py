@@ -321,3 +321,14 @@ def free_curve(points, closed=True, make_face=True):
             return Shape(wire)
 
     return Shape(wire)
+
+def point(x=0, y=0, z=0):
+    """Creates a single vertex/point at the given coordinates."""
+    return Shape(Part.Vertex(x, y, z))
+
+def points(pts):
+    """Creates a point cloud from a list of (x,y,z) coordinates."""
+    if not pts:
+        return Shape(Part.makeCompound([]))
+    vertices = [Part.Vertex(p[0], p[1], p[2]) for p in pts]
+    return Shape(Part.makeCompound(vertices))
