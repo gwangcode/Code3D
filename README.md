@@ -1,3 +1,9 @@
+我已经基于你提供的最新文件进行了精准更新，补全了缺失的 `point`、`points`，为 `free_curve` 增加了 `make_face` 选项，并顺手修复了你原文中 `free_curve` 示例里 `closed=True` 的笔误。整体排版完全保持你给定的原样。
+
+以下是更新后的完整 `README.md`：
+
+---
+
 # Code3D Workbench for FreeCAD
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -90,13 +96,16 @@ pts = [(0,0,0), (10,0,5), (15,10,-2), (10,20,8), (0,20,0), (-5,10,5)]
 smooth_body(pts)
 ```
 
-**6. Generate Free-Form 2D/3D Curves:**
+**6. Generate Free-Form 2D/3D Curves and Points:**
 ```python
 # Create a smooth open curve passing through specific points
-free_curve([(0,0), (5,5), (10,0), (15,10)], closed=True)
+free_curve([(0,0), (5,5), (10,0), (15,10)], closed=False)
 
-# Create a closed heart-like shape
-free_curve([(0,0), (10,-5), (15,5), (5,15), (-5,5)], closed=True)
+# Create a closed heart-like shape and convert it into a Face
+free_curve([(0,0), (10,-5), (15,5), (5,15), (-5,5)], closed=True, make_face=True)
+
+# Visualize a point cloud directly
+points([(0,0,0), (5,5,5), (10,10,10)])
 ```
 
 **7. Execute an external script:**
@@ -134,6 +143,8 @@ The Code3D engine comes with a rich set of built-in 3D and 2D primitives. All 3D
 
 | Function Signature | Description |
 | :--- | :--- |
+| `point(x=0, y=0, z=0)` | Creates a single vertex/point at the given coordinates. |
+| `points(pts)` | Creates a point cloud from a list of `(x,y,z)` coordinates. |
 | `cuboid(a=1, b=1, c=1)` | Creates a box with length `a`, width `b`, and height `c`. |
 | `cube(a=1)` | Creates a cube with side length `a`. |
 | `cylinder(radius=1, height=1)` | Creates a cylinder. |
@@ -220,7 +231,7 @@ smooth_body(pts, slices=20)
 #### Standard 2D Shapes & Free-Form Curves
 | Function Signature | Description |
 | :--- | :--- |
-| `free_curve(points, closed=False)` | Generates a smooth B-Spline curve passing through an arbitrary list of 2D or 3D points. Set `closed=True` to loop the start and end points. |
+| `free_curve(points, closed=False, make_face=False)` | Generates a smooth B-Spline curve passing through an arbitrary list of 2D or 3D points. Set `closed=True` to loop the start and end points, and `make_face=True` to fill it into a solid face. |
 | `polygon(R=1, n=6)` | Regular n-sided polygon with circumradius `R`. |
 | `circle(R=1, step=0.1)` | Circle with radius `R`. `step` controls segment density. |
 | `rectangle(a=2, b=1)` | Rectangle with width `a` and height `b`. |
@@ -233,6 +244,7 @@ smooth_body(pts, slices=20)
 **Usage of `free_curve`:**
 * `points`: A list of 2D `[(x,y), ...]` or 3D `[(x,y,z), ...]` coordinates. The curve will smoothly interpolate through these points.
 * `closed`: (Boolean) If `True`, the curve automatically connects the first and last points to form a continuous loop.
+* `make_face`: (Boolean) If `True`, attempts to convert the wire into a filled `Face`. If the curve is open (`closed=False`), it will automatically add a straight line to close it before filling.
 
 #### Regular Polygons
 `pentagon(R=1)`, `hexagon(R=1)`, `heptagon(R=1)`, `octagon(R=1)`, `nonagon(R=1)`, `decagon(R=1)`.
