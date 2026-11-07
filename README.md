@@ -143,72 +143,79 @@ The Code3D engine comes with a rich set of built-in 3D and 2D primitives. All 3D
 
 ---
 
-### 🌐 Advanced Surface & Point-Cloud Generation
+## 🌐 Advanced Surface & Point-Cloud Generators
 
-These two advanced functions are designed to handle complex point clouds and freeform surfaces. They return fully closed, valid `Part.Solid` objects.
+This workbench includes highly advanced algorithms to generate smooth, continuous B-Spline surfaces and solids from raw point clouds. 
 
-#### 1. `bspline_surface(points, thickness=0.0)`
-Creates a mathematically precise B-Spline surface from points and optionally thickens it into a solid.
+### 1. `bspline_surface(points, thickness=0.0)`
 
-*   **`points`**: 
-    *   **1D Point List** `[(x1,y1,z1), (x2,y2,z2), ...]`: Generates a closed B-spline curve. If the points are coplanar (same Z), it fills into a `Face`. If not, it creates a 3D wireframe `Wire`.
-    *   **2D Point Grid** `[[(x1,y1,z1), ...], [(x2,y2,z2), ...]]`: Generates a standard smooth B-spline surface (like a wavy cloth).
-*   **`thickness`** (float): If `> 0.0`, the surface will be offset and solidified into a closed 3D body (Solid).
+This function creates mathematically precise B-Spline surfaces from either a 1D contour or a 2D grid of points.
 
+**Input Modes:**
+*   **1D Contour (`List[Tuple]`)**: E.g., `[(x1,y1,z1), (x2,y2,z2), ...]`. 
+    *   If the points are **coplanar** (lying on the same flat plane), it generates a smooth filled `Face`.
+    *   If the points are **non-coplanar**, it generates a 3D wireframe `Wire` (which can be used for sweeps or pipes).
+*   **2D Point Grid (`List[List[Tuple]]`)**: E.g., `[[p1, p2, p3], [p4, p5, p6], ...]`. 
+    *   Generates a standard freeform B-Spline surface (like a wavy cloth). 
+
+**Parameters:**
+*   `points`: The list of coordinates.
+*   `thickness`: (Optional) If greater than `0.0`, the resulting surface will be solidified (thickened) into a closed 3D body.
+
+**Examples:**
 ```python
-# Example A: A 3x3 grid to create a wavy surface
-pts_grid = [
+# Example A: A wavy 3x3 grid surface
+grid_pts = [
     [(0, 0, 0), (10, 0, 5), (20, 0, 0)],
     [(0, 10, 5), (10, 10, 10), (20, 10, 5)],
     [(0, 20, 0), (10, 20, 5), (20, 20, 0)]
 ]
-# Create a wavy surface
-bspline_surface(pts_grid)
+bspline_surface(grid_pts)
 
-# Example B: A 1D contour thickened into a solid
-pts_outline = [(0,0,0), (15,5,0), (20,15,0), (10,25,0), (0,20,0), (-10,10,0)]
-# Creates a flat face thickened by 2mm
-bspline_surface(pts_outline, thickness=2.0)
+# Example B: A 2D heart contour, thickened into a 3D solid
+heart_pts = [(0, 0, 0), (15, 5, 0), (20, 15, 0), (10, 25, 0), (0, 20, 0), (-10, 10, 0)]
+bspline_surface(heart_pts, thickness=2.0)
 ```
 
-#### 2. `smooth_body(points)`
-Generates a perfectly smooth, continuous 3D solid from an **unordered** list of scattered points. Ideal for procedural rocks, pebbles, or organic shapes.
+**⚠️ Caveats & Warnings:**
+1.  **Self-Intersection**: A 1D point contour must not intersect itself (no "figure-8" shapes), or `Part.Face()` will fail.
+2.  **Grid Rectangularity**: For 2D grids, every row must have the exact same number of points (an `N x M` matrix). Irregular arrays will cause the B-Spline interpolation to fail.
+3.  **Thickness Artifacts**: Using a very large `thickness` on a highly curved surface may cause the side walls to self-intersect, resulting in an invalid solid.
 
-*   **Algorithm**: It uses a Convex Hull to wrap the points, followed by Catmull-Clark Subdivision and Taubin smoothing to guarantee globally continuous (C1/C2) surfaces without sharp edges.
-*   **`points`**: A list of 3D coordinates `[(x,y,z), (x,y,z), ...]`. Must contain at least 4 non-coplanar points.
+---
 
+### 2. `smooth_body(points, slices=15, target_poles=30)`
+
+This is a reverse-engineering grade algorithm that transforms **unordered, chaotic 3D point clouds** into a highly elegant, continuous, and minimal-face B-Spline solid. It is perfect for procedural rocks, organic shapes, or cleaning up scanned data.
+
+**How it works internally:**
+1.  Calculates the **Convex Hull** of all points to form a watertight raw skeleton.
+2.  Detects the longest bounding box axis and auto-**Slices** the hull into `slices` layers.
+3.  For each slice, it extracts the cross-section contour and **Resamples** it into `target_poles` equally spaced points.
+4.  **Aligns** the orientation (CW/CCW) and the start point of every layer to prevent twisting.
+5.  **Lofts** the perfectly aligned sections into a smooth NURBS solid.
+
+**Parameters:**
+*   `points`: A list of 3D points `[(x,y,z), ...]`. Must contain at least 4 non-coplanar points.
+*   `slices`: Number of horizontal layers (default 15). Higher values capture more detail but increase face count.
+*   `target_poles`: Number of control points per cross-section (default 30). Higher values make the cross-section smoother.
+
+**Example:**
 ```python
-# Example: Create a naturally smooth pebble from random points
-import random, math
+import random
 
-pts = []
-for i in range(15):
-    phi = random.uniform(0, math.pi)
-    for j in range(15):
-        theta = random.uniform(0, 2*math.pi)
-        r = 10 + random.uniform(-1.5, 1.5)
-        pts.append((
-            r * math.sin(phi) * math.cos(theta),
-            r * math.sin(phi) * math.sin(theta),
-            r * math.cos(phi)
-        ))
+# Generate 200 random points simulating a rock or asteroid
+pts = [(random.uniform(-10, 10), random.uniform(-10, 10), random.uniform(-10, 10)) for _ in range(200)]
 
-# Generates a smooth, watertight solid
-smooth_body(pts)
+# Automatically builds a smooth, organic B-Spline solid
+smooth_body(pts, slices=20)
 ```
 
-> **💡 Tip**: If you have an existing FreeCAD model and want to smooth it, you can extract its vertices and feed them into `smooth_body`:
-> ```python
-> pts = [(v.X, v.Y, v.Z) for v in part("model_1").Vertexes]
-> smooth_body(pts)
-> ```
-
-
-**Example: Create a smooth body from scattered points**
-```python
-pts = [(0,0,0), (10,0,5), (15,10,-2), (10,20,8), (0,20,0), (-5,10,5)]
-smooth_body(pts)
-```
+**⚠️ Caveats & Warnings:**
+1.  **Convexity Limitation**: Because the algorithm uses a Convex Hull as the base, it cannot generate highly **concave** shapes (e.g., a crescent moon, a donut, or a model with deep undercuts). The resulting body will always "wrap" the outermost points.
+2.  **Slice Count**: Do not set `slices` too high (e.g., > 50). If the slices are too close to each other, OCC's `makeLoft` algorithm may throw a `StdFail_NotDone` error due to insufficient separation between sections.
+3.  **Point Distribution**: Ensure the point cloud is somewhat distributed in 3D. If all points lie strictly on a single line or plane, the algorithm will degrade gracefully (returning a line or a flat face).
+4.  **Display Mode**: The resulting body is mathematically smooth. If it appears black and faceted in the viewport, select it and press `V, S` (or change Display Mode to `Shaded`) in FreeCAD.
 
 ---
 
