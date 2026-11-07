@@ -90,7 +90,16 @@ pts = [(0,0,0), (10,0,5), (15,10,-2), (10,20,8), (0,20,0), (-5,10,5)]
 smooth_body(pts)
 ```
 
-**6. Execute an external script:**
+**6. Generate Free-Form 2D/3D Curves:**
+```python
+# Create a smooth open curve passing through specific points
+free_curve([(0,0), (5,5), (10,0), (15,10)], closed=False)
+
+# Create a closed heart-like shape
+free_curve([(0,0), (10,-5), (15,5), (5,15), (-5,5)], closed=True)
+```
+
+**7. Execute an external script:**
 ```python
 runf("D:/projects/my_complex_model.py")
 ```
@@ -207,9 +216,10 @@ smooth_body(pts, slices=20)
 
 2D primitives return a `Shape2d` object. They are automatically displayed as flat faces. To turn a 2D shape into a 3D solid, you can use the `.extrude()` method.
 
-#### Standard 2D Shapes
+#### Standard 2D Shapes & Free-Form Curves
 | Function Signature | Description |
 | :--- | :--- |
+| `free_curve(points, closed=False)` | Generates a smooth B-Spline curve passing through an arbitrary list of 2D or 3D points. Set `closed=True` to loop the start and end points. |
 | `polygon(R=1, n=6)` | Regular n-sided polygon with circumradius `R`. |
 | `circle(R=1, step=0.1)` | Circle with radius `R`. `step` controls segment density. |
 | `rectangle(a=2, b=1)` | Rectangle with width `a` and height `b`. |
@@ -218,6 +228,10 @@ smooth_body(pts, slices=20)
 | `rhombus(a=1, angle=pi/4)` | Rhombus with side `a` and angle. |
 | `trapezoid(upper_side=1, lower_side=2, height=1)` | Isosceles trapezoid. |
 | `ellipse(a=2, b=1, step=0.1)` | Ellipse with semi-axes `a` and `b`. |
+
+**Usage of `free_curve`:**
+* `points`: A list of 2D `[(x,y), ...]` or 3D `[(x,y,z), ...]` coordinates. The curve will smoothly interpolate through these points.
+* `closed`: (Boolean) If `True`, the curve automatically connects the first and last points to form a continuous loop.
 
 #### Regular Polygons
 `pentagon(R=1)`, `hexagon(R=1)`, `heptagon(R=1)`, `octagon(R=1)`, `nonagon(R=1)`, `decagon(R=1)`.
@@ -250,7 +264,7 @@ show(heart_3d, "Heart_Solid")
 
 ## ⚡ Operator Overloading Cheatsheet
 
-Once a shape is created or retrieved via `part("name")`, you can use the following operators:
+Once a 2D/3D shape is created or retrieved via `part("name")`, you can use the following operators:
 
 | Operator | Syntax Example | Operation | Effect on Tree / History |
 | :--- | :--- | :--- | :--- |
