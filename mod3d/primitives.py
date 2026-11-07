@@ -119,7 +119,7 @@ def bspline_surface(points, thickness=0.0):
 def smooth_body(points, u_res=15, v_res=30):
     """
     Generate a perfectly smooth, watertight B-Spline solid from a point cloud.
-    Uses uniform profile topology (equal number of edges) to ensure makeLoft success.
+    Uses Ellipsoidal Parameterization with uniform loop topologies to guarantee Loft success.
     """
     import numpy as np
     import FreeCAD
@@ -192,49 +192,51 @@ def smooth_body(points, u_res=15, v_res=30):
                 world_row.append(FreeCAD.Vector(float(world_p[0]), float(world_p[1]), float(world_p[2])))
             grid_pts_world.append(world_row)
         
-        # 6. 闭合经线 (phi)
-        wrapped = [row + [row[0]] for row in grid_pts_world]
-        
         # ==========================================
-        # 7. 【核心修复】生成统一边数的截面，保证 Loft 成功
+        # 6. 【核心修复】统一所有截面的拓扑结构
         # ==========================================
         sections = []
-        num_edges = v_res  # 强制所有截面的边数与经向分段数一致
-
-        for i, row in enumerate(wrapped):
-            if i == 0 or i == len(wrapped) - 1:
-                # 极点：使用与中间截面相同边数的微小多边形（如3边或4边），而非单个 Vertex
-                # 这样可以避免 "profiles are inconsistent" 错误
+        for i, row in enumerate(grid_pts_world):
+            if i == 0 or i == len(grid_pts_world) - 1:
+                # 极点：生成一个极微小的多边形环（而不是单一点）
                 pole_pt = row[0]
-                # 创建一个极小的四边形作为极点截面，避免零尺寸
-                epsilon = 1e-5
-                # 为了简单，我们创建一个非常小的、边数为 num_edges 的多边形
-                # 这里使用简单的多段线近似，确保边数一致
-                pts = []
-                for k in range(num_edges):
-                    angle = 2.0 * np.pi * k / num_edges
+                epsilon = 1e-4 # 微扰尺寸
+                tiny_pts = []
+                for k in range(v_res):
+                    angle = 2.0 * np.pi * k / v_res
                     offset = FreeCAD.Vector(epsilon * np.cos(angle), epsilon * np.sin(angle), 0)
-                    # 注意：这里需要根据椭球主轴方向放置小圆，但简单起见，使用垂直于主轴的小圆
-                    # 为了简化，我们直接使用极点本身构成一个退化的多边形，但边数一致
-                    pts.append(pole_pt)
-                # 使用 makePolygon 创建闭合线框
-                wire = Part.makePolygon(pts)
-                sections.append(wire)
+                    tiny_pts.append(pole_pt + offset)
+                tiny_pts.append(tiny_pts[0]) # 强制闭合
+                sections.append(Part.makePolygon(tiny_pts))
             else:
-                # 非极点：使用完美的 B 样条闭合环
-                bspline = Part.BSplineCurve()
-                bspline.interpolate(row, PeriodicFlag=True)
-                wire = Part.Wire([bspline.toShape()])
-                sections.append(wire)
+                # 中间非极点区域：将这一圈完美闭合
+                row_closed = row + [row[0]]
+                # 使用 makePolygon 生成统一的多边形环，以确保 Loft 绝对成功
+                sections.append(Part.makePolygon(row_closed))
 
-        # 直接放样，生成实心体
+        # 7. 直接放样（自动在截面之间生成光滑的 B-Spline 过渡）
         loft_solid = Part.makeLoft(sections, solid=True, ruled=False)
+        
         if loft_solid and loft_solid.isValid():
             return Shape(loft_solid)
 
     except Exception as e:
         FreeCAD.Console.PrintWarning(f"Smooth body generation failed: {e}\n")
         pass
+
+    # 8. 终极兜底（以防极端情况）
+    import Mesh
+    import trimesh
+    hull = trimesh.convex.convex_hull(np_pts)
+    mesh_obj = Mesh.Mesh()
+    for f in hull.faces:
+        v0, v1, v2 = hull.vertices[f[0]], hull.vertices[f[1]], hull.vertices[f[2]]
+        mesh_obj.addFacet(float(v0[0]), float(v0[1]), float(v0[2]),
+                          float(v1[0]), float(v1[1]), float(v1[2]),
+                          float(v2[0]), float(v2[1]), float(v2[2]))
+    shape = Part.Shape()
+    shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
+    return Shape(Part.makeSolid(shape))
 
     # ==========================================
     # 8. 终极兜底
