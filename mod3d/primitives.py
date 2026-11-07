@@ -116,7 +116,7 @@ def bspline_surface(points, thickness=0.0):
     return Shape(face)
 
 
-def ellipsoid_body(points, u_res=20, v_res=40):
+def smooth_body(points, u_res=20, v_res=40):
     """
     Generate a perfectly smooth, watertight B-Spline solid from a point cloud.
     Uses Ellipsoidal Parameterization with pole capping to create a TOPOLOGICALLY CLOSED 
