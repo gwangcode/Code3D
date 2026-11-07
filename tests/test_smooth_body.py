@@ -5,6 +5,7 @@ import types
 from unittest.mock import MagicMock
 import numpy as np
 
+# 动态探测 FreeCAD 路径
 def add_freecad_to_path():
     if 'CONDA_PREFIX' in os.environ:
         prefix = os.environ['CONDA_PREFIX']
@@ -18,6 +19,7 @@ def add_freecad_to_path():
 add_freecad_to_path()
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+# 假 PySide 环境
 class DummyQPlainTextEdit:
     NoWrap = 0
     def __init__(self, *args, **kwargs): pass
@@ -52,43 +54,53 @@ def term():
     doc = FreeCAD.newDocument("SmoothBodyTestDoc")
     FreeCAD.setActiveDocument("SmoothBodyTestDoc")
     term = PythonTerminal()
-    
-    # 【终极大招】把 np 塞进终端环境，让它永远不会找不到 np
-    term.local_vars["np"] = np
-    term.local_vars["numpy"] = np
-    
     terminal.QtCore.QTimer.singleShot = lambda ms, func: func()
     yield term
     FreeCAD.closeDocument("SmoothBodyTestDoc")
 
+
+# ==========================================
+# 测试 1：共面点集生成 2D 曲面
+# ==========================================
 def test_smooth_body_coplanar(term):
+    """Test coplanar points generating a 2D face"""
     term.write = MagicMock() 
     pts = [(0,0,0), (10,0,0), (15,10,0), (10,20,0), (0,20,0), (-5,10,0)]
-    term.execute_code(f"smooth_body({pts})")
-    obj = FreeCAD.ActiveDocument.getObject("model_1")
-    assert obj is not None, "Failed to generate object."
-    assert obj.Shape.ShapeType == "Face"
-    assert obj.Shape.isValid()
-
-def test_smooth_body_sparse_points(term):
-    term.write = MagicMock()
-    pts = [(0,0,0), (10,0,5), (15,10,-2), (10,20,8), (0,20,0), (-5,10,5)]
-    term.execute_code(f"smooth_body({pts})")
     
-    if term.write.call_count > 0:
-        print("\n=== TERMINAL ERROR ===")
-        print(term.write.call_args[0][0])
-        print("======================\n")
+    term.execute_code(f"smooth_body({pts})")
         
     obj = FreeCAD.ActiveDocument.getObject("model_1")
     assert obj is not None, "Failed to generate object."
-    # 不再强制要求必须是 Loft 面数，只要是个合法的 3D Solid 就算成功
+    assert obj.Shape.ShapeType == "Face", "Coplanar points should generate a Face."
+    assert obj.Shape.isValid(), "Generated Face is invalid."
+
+# ==========================================
+# 测试 2：稀疏点云生成完美 B-Spline 实体
+# ==========================================
+def test_smooth_body_sparse_points(term):
+    """Test sparse points generating a solid via direct spherical B-Spline fitting"""
+    term.write = MagicMock()
+    pts = [(0,0,0), (10,0,5), (15,10,-2), (10,20,8), (0,20,0), (-5,10,5)]
+    
+    term.execute_code(f"smooth_body({pts})")
+        
+    obj = FreeCAD.ActiveDocument.getObject("model_1")
+    assert obj is not None, "Failed to generate object."
     assert obj.Shape.ShapeType in ("Solid", "CompSolid"), "Should generate a 3D solid."
     assert obj.Shape.isValid(), "Generated solid is invalid."
     assert obj.Shape.Volume > 0, "Volume must be greater than 0."
+    assert obj.Shape.isClosed(), "The resulting solid is not closed (leaking)."
+    
+    # 因为不再加厚，面数会极其精简（通常只有 1 到 4 个 B-Spline 面）
+    assert len(obj.Shape.Faces) < 100, "Face count is too high, fitting or closure may have failed."
 
-def test_smooth_body_dense_points_and_slices(term):
+# ==========================================
+# 测试 3：密集点云无参数调用 (验证鲁棒性)
+# ==========================================
+def test_smooth_body_dense_points(term):
+    """Test dense points generating a closed solid"""
     term.write = MagicMock()
+    
     pts = []
     for i in range(7):
         for j in range(7):
@@ -99,20 +111,21 @@ def test_smooth_body_dense_points_and_slices(term):
             z = 15 * np.cos(theta)
             pts.append((x, y, z))
             
-    term.execute_code(f"smooth_body({pts}, slices=4)")
+    term.execute_code(f"smooth_body({pts})")
     obj = FreeCAD.ActiveDocument.getObject("model_1")
     
-    if term.write.call_count > 0:
-        print("\n=== TERMINAL ERROR ===")
-        print(term.write.call_args[0][0])
-        print("======================\n")
-        
     assert obj is not None, "Failed to generate object."
     assert obj.Shape.isValid(), "Generated solid is invalid."
+    assert obj.Shape.isClosed(), "The resulting solid is not closed."
     assert obj.Shape.Volume > 0, "Volume must be greater than 0."
 
+# ==========================================
+# 测试 4：点数不足时的异常处理
+# ==========================================
 def test_smooth_body_insufficient_points(term):
+    """Test exception handling when there are fewer than 4 points"""
     term.write = MagicMock()
     term.execute_code("smooth_body([(0,0,0), (10,0,0), (0,10,0)])")
+    
     term.write.assert_called_once()
     assert "At least 4 points are required" in term.write.call_args[0][0]
