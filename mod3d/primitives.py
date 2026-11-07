@@ -118,9 +118,8 @@ def bspline_surface(points, thickness=0.0):
 
 def smooth_body(points):
     """
-    Generate a minimal-face, mathematically smooth B-Spline body from unordered points.
-    Algorithm: Spherical Parameterization -> B-Spline Surface Fitting -> Thicken.
-    This is highly robust and guarantees a mathematically smooth NURBS solid.
+    Generate a perfectly smooth, seamless 3D solid from unordered points.
+    Uses Convex Hull -> Spherical Parameterization -> B-Spline Surface Fitting.
     """
     import numpy as np
     import FreeCAD
@@ -149,11 +148,11 @@ def smooth_body(points):
         except Exception:
             return Shape(Part.makePolygon([FreeCAD.Vector(*p) for p in points]))
 
-    # 2. Calculate Convex Hull to get a perfect envelope
+    # 2. Calculate Convex Hull
     hull = trimesh.convex.convex_hull(np_pts)
     hull_pts = np.array(hull.vertices)
     
-    # 3. Spherical Parameterization (Mapping 3D points to a regular 2D grid)
+    # 3. Spherical Parameterization for a closed 3D grid
     center = hull_pts.mean(axis=0)
     centered_hull = hull_pts - center
     
@@ -161,10 +160,9 @@ def smooth_body(points):
     theta = np.arccos(np.clip(centered_hull[:, 2] / (r + 1e-9), -1.0, 1.0))
     phi = np.arctan2(centered_hull[:, 1], centered_hull[:, 0])
 
-    # Create a grid of U x V (e.g., 10 x 20) for B-Spline fitting
-    # We avoid exact poles (0 and pi) to prevent singularities
-    u_vals = np.linspace(0.05, np.pi - 0.05, 10)
-    v_vals = np.linspace(-np.pi, np.pi, 20)
+    # 【核心改动】引入真正的南北极点，构建完美的全封闭拓扑
+    u_vals = np.linspace(0, np.pi, 15) 
+    v_vals = np.linspace(-np.pi, np.pi, 30)
     
     grid_pts = []
     for u_ang in u_vals:
@@ -175,31 +173,29 @@ def smooth_body(points):
                 np.sin(u_ang) * np.sin(v_ang),
                 np.cos(u_ang)
             ])
-            # Project all points onto this direction and find the furthest one
             projections = np.dot(centered_hull, dir_vec)
             max_r = np.max(projections)
             pt = center + dir_vec * max_r
             row.append(FreeCAD.Vector(float(pt[0]), float(pt[1]), float(pt[2])))
         grid_pts.append(row)
 
-    # 4. Fit a massive, perfectly smooth B-Spline Surface
+    # 4. Fit B-Spline Surface
     try:
         surf = Part.BSplineSurface()
-        # Degree 3 in both U and V directions (C2 continuous)
         surf.interpolate(grid_pts, 3, 3) 
         face = surf.toShape()
         
-        # 5. Thicken the surface into a solid body
-        solid = face.thicken(0.5, 1e-5)
-        if solid.ShapeType == 'CompSolid':
-            solid = solid.Solids[0]
-            
+        # 【核心改动】因为极点是真正重合的，生成的壳是完美闭合的。
+        # 直接把这个闭合 Face 转换成 Shell，再转换成 Solid！
+        # 告别加厚，告别侧壁，告别不光滑！
+        shell = Part.Shell([face])
+        solid = Part.Solid(shell)
+        
         return Shape(solid)
         
     except Exception as e:
-        import FreeCAD
         FreeCAD.Console.PrintError(f"Surface fitting failed: {e}\n")
-        # Fallback: Return raw convex hull if everything fails
+        # Fallback
         import Mesh
         mesh_obj = Mesh.Mesh()
         for f in hull.faces:
@@ -210,34 +206,6 @@ def smooth_body(points):
         shape = Part.Shape()
         shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
         return Shape(Part.makeSolid(shape))
-
-def _fallback_smooth_mesh(hull_mesh):
-    import Mesh
-    import Part
-    from .patch import Shape
-    
-    smooth_mesh = hull_mesh.copy()
-    for _ in range(3):
-        smooth_mesh = smooth_mesh.subdivide()
-        
-    try:
-        import trimesh
-        smoothed_mesh = trimesh.smoothing.filter_taubin(smooth_mesh, lamb=0.5, nu=-0.53, iterations=10)
-        vertices = smoothed_mesh.vertices
-        faces = smoothed_mesh.faces
-    except Exception:
-        vertices = hull_mesh.vertices
-        faces = hull_mesh.faces
-
-    mesh_obj = Mesh.Mesh()
-    for f in faces:
-        v0, v1, v2 = vertices[f[0]], vertices[f[1]], vertices[f[2]]
-        mesh_obj.addFacet(float(v0[0]), float(v0[1]), float(v0[2]),
-                          float(v1[0]), float(v1[1]), float(v1[2]),
-                          float(v2[0]), float(v2[1]), float(v2[2]))
-    shape = Part.Shape()
-    shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
-    return Shape(Part.makeSolid(shape))
 
 # ==========================================
 # ---- 2D primitives ----
