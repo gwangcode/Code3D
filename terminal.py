@@ -24,9 +24,6 @@ try:
 except ImportError as e:
     FreeCAD.Console.PrintError(f"Failed to load mod3d: {e}\n")
 
-# ==========================================
-# 【新增】用于实现完美折叠的静态特征类
-# ==========================================
 class TransformFeature:
     def __init__(self, obj, op_type="Feature"):
         obj.addProperty("App::PropertyLink", "Base", "Base", "Base Object")
@@ -34,8 +31,12 @@ class TransformFeature:
         self.op_type = op_type
     def execute(self, obj):
         pass
-    def getSubObjects(self):
-        return [self.Base] if self.Base else []
+    def getSubObjects(self, *args): # 【修复】兼容 FreeCAD 底层传参
+        if hasattr(self, "Base") and self.Base:
+            return [self.Base]
+        if hasattr(self, "ViewObject") and hasattr(self.ViewObject, "Object") and self.ViewObject.Object.Base:
+            return [self.ViewObject.Object.Base]
+        return []
 
 class ViewProviderTransform:
     def __init__(self, vobj, op_type="Feature"):
@@ -48,7 +49,7 @@ class ViewProviderTransform:
             return ":/icons/Part_Chamfer.svg"
         return ":/icons/Tree_Part.svg"
     def claimChildren(self):
-        if hasattr(self.ViewObject, "Object") and hasattr(self.ViewObject.Object, "Base") and self.ViewObject.Object.Base:
+        if hasattr(self, "ViewObject") and hasattr(self.ViewObject, "Object") and self.ViewObject.Object.Base:
             return [self.ViewObject.Object.Base]
         return []
     def attach(self, vobj): self.ViewObject = vobj
