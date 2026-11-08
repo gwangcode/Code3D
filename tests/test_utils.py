@@ -117,17 +117,17 @@ def test_show_function():
 
 
 def test_sketch():
-    """测试能否将 Face 轮廓提取到 Sketch 对象中"""
-    # 创建一个带面的盒子
-    box = Part.makeBox(10, 10, 10)
+    """测试能否将 2D Face 轮廓提取到 Sketch 对象中"""
+    # 【修复】创建一个纯二维平面，确保所有边都在同一个 XY 平面上
+    face = Part.makePlane(10, 10)
     
     # 提取到 Sketch_1
-    sk = sketch(box, "Sketch_1")
+    sk = sketch(face, "Sketch_1")
     
     # 验证对象被创建，且类型正确
     assert sk is not None
     assert sk.TypeId == "Sketcher::SketchObject"
     assert sk.Name == "Sketch_1"
     
-    # 验证几何元素被成功提取（盒子的边会被加入草图）
+    # 验证几何元素被成功提取（一个平面的 4 条边应该被成功提取到 Sketch 中）
     assert len(sk.Geometry) > 0
