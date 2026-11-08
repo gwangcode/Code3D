@@ -56,8 +56,17 @@ class Shape2d:
         if len(v) and np.allclose(v[0], v[-1]): return Shape2d(v[:-1])
         return Shape2d(np.vstack([v, v[0]]))
 
+    # 【新增】重载 & 运算符，处理 2D 圆角/倒角
+    def __and__(self, other):
+        if isinstance(other, (int, float)):
+            from .utils import apply_fillet_chamfer
+            from .patch import Shape
+            face = self.to_face()
+            new_shape = apply_fillet_chamfer(face, other)
+            return Shape(new_shape)
+        raise ValueError(f"Unsupported operand for &: {type(other)}")
+
     def to_face(self) -> Part.Shape:
-        """转为 FreeCAD 的平面"""
         vecs = [FreeCAD.Vector(p[0], p[1], 0) for p in self.vertices]
         if not np.allclose(self.vertices[0], self.vertices[-1]):
             vecs.append(vecs[0])
