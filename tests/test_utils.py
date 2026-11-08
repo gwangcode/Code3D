@@ -3,9 +3,7 @@ import FreeCAD
 import Part
 import numpy as np
 
-# 根目录 utils 包含 show 和 sketch
 from utils import show, sketch
-# mod3d.utils 只包含纯数学工具
 from mod3d.utils import _is_vec, _vec, _tessellate, _tri_mesh_to_shape, extremes, apply_fillet_chamfer
 
 @pytest.fixture(autouse=True)
@@ -69,21 +67,19 @@ def test_sketch():
     if FreeCAD.GuiUp:
         assert len(sk.Geometry) > 0
 
-# ==========================================
-# 【新增】测试底层圆角/倒角算法
-# ==========================================
 def test_apply_fillet_chamfer():
     box = Part.makeBox(10, 10, 10)
     
     # 1. 测试圆角 (radius > 0)
     fillet_shape = apply_fillet_chamfer(box, radius=2.0)
     assert fillet_shape.isValid()
-    assert len(fillet_shape.Edges) > 12  # 圆角后边数会增加
+    # 【修复】圆角后，原来的 6 个平面的角被切掉，面数必然会增加
+    assert len(fillet_shape.Faces) > 6
     
     # 2. 测试倒角 (radius < 0)
     chamfer_shape = apply_fillet_chamfer(box, radius=-2.0)
     assert chamfer_shape.isValid()
-    assert len(chamfer_shape.Edges) > 12
+    assert len(chamfer_shape.Faces) > 6
     
     # 3. 测试只处理特定边
     selected_edges = [box.Edges[0], box.Edges[1]]
