@@ -147,65 +147,28 @@ def extremes(part) -> tuple:
     bb = part.BoundBox
     return bb.XMin, bb.XMax, bb.YMin, bb.YMax, bb.ZMin, bb.ZMax
 
-def __magic_fillet__(value):
-    """
-    终端底层 AST 重载调用的核心函数。
-    """
+def apply_fillet_chamfer(shape, radius, selected_edges=None):
     import FreeCAD
-    import FreeCADGui
-    
-    selection = FreeCADGui.Selection.getSelectionEx()
-    if not selection:
-        raise ValueError("Please select objects or edges in the 3D view first.")
+    if not shape.Edges:
+        return shape
         
-    doc = FreeCAD.ActiveDocument
-    if not doc:
-        raise ValueError("No active document.")
-        
-    success_count = 0
-    for sel in selection:
-        obj = sel.Object
-        if not hasattr(obj, "Shape") or not obj.Shape:
-            continue
-            
-        shape = obj.Shape
-        edges_to_process = []
-        
-        if sel.SubObjects:
-            for sub in sel.SubObjects:
-                if sub.ShapeType == "Edge":
-                    edges_to_process.append(sub)
-        else:
-            edges_to_process = shape.Edges
-            
-        if not edges_to_process:
-            continue
-            
+    if selected_edges:
         try:
-            indices = [shape.Edges.index(e) for e in edges_to_process]
-            if value > 0:
-                new_shape = shape.makeFillet(value, indices)
-                suffix = "Fillet"
-            else:
-                new_shape = shape.makeChamfer(-value, indices)
-                suffix = "Chamfer"
-                
-            new_obj = doc.addObject("Part::Feature", f"{obj.Name}_{suffix}")
-            new_obj.Shape = new_shape
-            
-            if hasattr(obj, 'ViewObject') and obj.ViewObject:
-                obj.ViewObject.Visibility = False
-            success_count += 1
-        except Exception as e:
-            FreeCAD.Console.PrintWarning(f"Failed on {obj.Name}: {e}\n")
-            
-    if success_count > 0:
-        doc.recompute()
+            indices = [shape.Edges.index(e) for e in selected_edges]
+        except ValueError:
+            indices = list(range(len(shape.Edges)))
     else:
-        raise ValueError("Failed to apply Fillet/Chamfer.")
-            
-    if success_count > 0:
-        doc.recompute()
-        FreeCAD.Console.PrintMessage(f"✅ Successfully applied {'Fillet' if value > 0 else 'Chamfer'} to {success_count} object(s).\n")
-    else:
-        raise ValueError("No valid edges found to fillet/chamfer, or operation failed.")
+        indices = list(range(len(shape.Edges)))
+
+    if not indices:
+        return shape
+
+    try:
+        if radius > 0:
+            return shape.makeFillet(radius, indices)
+        elif radius < 0:
+            return shape.makeChamfer(-radius, indices)
+        return shape
+    except Exception as e:
+        FreeCAD.Console.PrintWarning(f"Fillet/Chamfer failed: {e}\n")
+        return shape
