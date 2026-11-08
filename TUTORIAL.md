@@ -1041,6 +1041,3 @@ part("Vase_Base") ^ [0, 0, 0.1]
 ### 11.2 Black or Faceted Shapes
 *   **Cause**: FreeCAD defaults to flat lines for performance.
 *   **Solution**: Select the object, press `V` then `S` to enable `Shaded` mode.
-
-### 11.3 `ImportError: cannot import name 'sketch'`
-*   **Cause**: Circular import. `sketch` must be in the root `utils.py`, not `mod3d/utils.py`.
