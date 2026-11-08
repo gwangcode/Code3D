@@ -332,3 +332,14 @@ def points(pts):
         return Shape(Part.makeCompound([]))
     vertices = [Part.Vertex(p[0], p[1], p[2]) for p in pts]
     return Shape(Part.makeCompound(vertices))
+
+def line(p1, p2):
+    """
+    Creates a straight line segment between two points.
+    Accepts 2D (x,y) or 3D (x,y,z) coordinates.
+    Returns a Wire shape.
+    """
+    v1 = FreeCAD.Vector(p1[0], p1[1], p1[2] if len(p1) == 3 else 0)
+    v2 = FreeCAD.Vector(p2[0], p2[1], p2[2] if len(p2) == 3 else 0)
+    edge = Part.makeLine(v1, v2)
+    return Shape(Part.Wire([edge]))
