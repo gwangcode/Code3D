@@ -70,30 +70,42 @@ def test_sketch():
 
 def test_apply_fillet_chamfer():
     """
-    【核心修复】因为 OCC 引擎在无头环境中执行 makeFillet 极易静默失败，
-    我们使用 Mock 技术替换底层的几何运算，纯粹测试我们的业务逻辑（索引匹配与方法调用）。
+    【核心修复】使用纯 Mock 对象来测试 apply_fillet_chamfer 的逻辑。
+    绕过 OCC 引擎在无头环境下的静默失败，以及 C++ 对象的只读限制。
     """
-    box = Part.makeBox(10, 10, 10)
-    selected_edges = [box.Edges[0]]
+    from unittest.mock import MagicMock
     
-    # 拦截底层调用
-    mock_fillet = MagicMock(return_value=box)
-    mock_chamfer = MagicMock(return_value=box)
-    box.makeFillet = mock_fillet
-    box.makeChamfer = mock_chamfer
+    # 1. 构造一个假的 Shape 对象
+    fake_shape = MagicMock()
     
-    # 1. 测试圆角 (radius > 0)
-    apply_fillet_chamfer(box, radius=2.0, selected_edges=selected_edges)
-    # 断言 makeFillet 被调用了一次，且传入了正确的半径和提取出的边索引 [0]
-    mock_fillet.assert_called_once_with(2.0, [0])
+    # 2. 构造几条假的边
+    edge1 = MagicMock()
+    edge1.CenterOfMass = FreeCAD.Vector(0, 0, 0)
+    edge2 = MagicMock()
+    edge2.CenterOfMass = FreeCAD.Vector(0, 0, 10)
     
-    # 2. 测试倒角 (radius < 0)
-    apply_fillet_chamfer(box, radius=-2.0, selected_edges=selected_edges)
-    # 断言 makeChamfer 被调用了一次，且距离为 2.0
-    mock_chamfer.assert_called_once_with(2.0, [0])
-
-    # 3. 测试全边倒角
-    apply_fillet_chamfer(box, radius=-1.5)
-    # box 有 12 条边，所以应该传入长度为 12 的索引列表
-    args, kwargs = mock_chamfer.call_args
-    assert len(args[1]) == 12
+    # 让 shape.Edges 返回这两条边
+    fake_shape.Edges = [edge1, edge2]
+    
+    # 3. 测试单边圆角
+    apply_fillet_chamfer(fake_shape, radius=2.0, selected_edges=[edge1])
+    # 断言底层调用了 makeFillet，半径 2.0，且只选中了第 0 条边
+    fake_shape.makeFillet.assert_called_once_with(2.0, [0])
+    
+    # 重置 Mock
+    fake_shape.makeFillet.reset_mock()
+    fake_shape.makeChamfer.reset_mock()
+    
+    # 4. 测试单边倒角 (radius < 0)
+    apply_fillet_chamfer(fake_shape, radius=-2.0, selected_edges=[edge2])
+    # 断言底层调用了 makeChamfer，距离 2.0，且选中了第 1 条边
+    fake_shape.makeChamfer.assert_called_once_with(2.0, [1])
+    
+    # 重置 Mock
+    fake_shape.makeFillet.reset_mock()
+    fake_shape.makeChamfer.reset_mock()
+    
+    # 5. 测试全边圆角
+    apply_fillet_chamfer(fake_shape, radius=1.5)
+    # 断言底层调用了 makeFillet，半径 1.5，且传入了所有边 [0, 1]
+    fake_shape.makeFillet.assert_called_once_with(1.5, [0, 1])
