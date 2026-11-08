@@ -2,7 +2,14 @@ import pytest
 import FreeCAD
 import Part
 import numpy as np
-from utils import _is_vec, _vec, _tessellate, _tri_mesh_to_shape, extremes, show
+
+# 修正导入路径：从 mod3d.utils 导入这些函数
+from mod3d.utils import _is_vec, _vec, _tessellate, _tri_mesh_to_shape, extremes, sketch
+# 尝试从根目录导入 show（如果报错，说明 show 也在 mod3d.utils 里，直接改成 from mod3d.utils import show 即可）
+try:
+    from utils import show
+except ImportError:
+    from mod3d.utils import show
 
 @pytest.fixture(autouse=True)
 def setup_freecad_doc():
@@ -81,9 +88,8 @@ def test_tessellate_and_rebuild():
     
     # 验证结果有效性
     assert new_shape.isValid()
-    # 由于离散化是由三角面拼成的近似，类型可能是 Solid 或 Shell
     assert new_shape.ShapeType in ("Solid", "Shell", "Compound")
-    # 验证生成的包围盒尺寸大致接近原来的球体（直径 20）
+    
     bb = new_shape.BoundBox
     assert bb.XLength == pytest.approx(20.0, abs=1.0)
 
@@ -96,18 +102,32 @@ def test_tessellate_invalid_input():
 
 
 # ==========================================
-# 4. 显示函数测试
+# 4. 显示与草图函数测试
 # ==========================================
 def test_show_function():
     """测试 show 函数能否在文档中正确创建对象"""
     box = Part.makeBox(10, 10, 10)
     obj = show(box, name="My_Box")
     
-    # 验证文档中存在该对象
     doc = FreeCAD.ActiveDocument
     assert obj is not None
     assert doc.getObject("My_Box") is not None
-    
-    # 验证对象的 Shape 是否正确赋值
     assert obj.Shape.isValid()
     assert obj.Shape.Volume == pytest.approx(1000.0)
+
+
+def test_sketch():
+    """测试能否将 Face 轮廓提取到 Sketch 对象中"""
+    # 创建一个带面的盒子
+    box = Part.makeBox(10, 10, 10)
+    
+    # 提取到 Sketch_1
+    sk = sketch(box, "Sketch_1")
+    
+    # 验证对象被创建，且类型正确
+    assert sk is not None
+    assert sk.TypeId == "Sketcher::SketchObject"
+    assert sk.Name == "Sketch_1"
+    
+    # 验证几何元素被成功提取（盒子的边会被加入草图）
+    assert len(sk.Geometry) > 0
