@@ -2,7 +2,7 @@ import numpy as np
 import FreeCAD
 import Part
 from typing import Union, List
-from .utils import _is_vec, _vec
+from .utils import _is_vec, _vec, apply_fillet_chamfer
 
 class Shape2d:
     def __init__(self, vertices: Union[List[List[float]], np.ndarray]):
@@ -56,10 +56,8 @@ class Shape2d:
         if len(v) and np.allclose(v[0], v[-1]): return Shape2d(v[:-1])
         return Shape2d(np.vstack([v, v[0]]))
 
-    # 【新增】重载 & 运算符，处理 2D 圆角/倒角
     def __and__(self, other):
         if isinstance(other, (int, float)):
-            from .utils import apply_fillet_chamfer
             from .patch import Shape
             face = self.to_face()
             new_shape = apply_fillet_chamfer(face, other)
