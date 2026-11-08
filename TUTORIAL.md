@@ -300,27 +300,244 @@ bottom_face = hull_solid.Faces[0]
 
 ---
 
-## 6. 2D Geometry & Free-Form Curves
+## 6. 2D Geometry & Mathematical Curves
 
-All 2D functions return a `Shape2d` object (wrapping a Numpy array of `(x,y)` coordinates). The terminal automatically fills them into a `Face` for display.
+All 2D functions in Code3D return a `Shape2d` object. Under the hood, a `Shape2d` is simply a Python wrapper around a 2D NumPy array of `(x, y)` coordinates. 
+
+**Important Behavior**: When you input a 2D function directly into the Code3D terminal (e.g., `circle(10)`), the engine automatically fills the closed loop and converts it into a `Part.Face` (a 2D planar surface in FreeCAD). 
+To turn this flat surface into a 3D solid, you must use the `.extrude(vector)` method in your code, or select the Face in FreeCAD and use the "Extrude" tool in the GUI.
 
 ### 6.1 Standard Shapes
-*   `polygon(R, n)`: An n-sided polygon.
-*   `circle(R)`: Approximated with an n-sided polygon. The number of segments is auto-calculated based on the radius.
-*   `rectangle(a, b)`, `square(a)`, `trapezoid(...)`, `ellipse(a, b)`.
+
+These functions generate standard geometric primitives based on polygons and rectangles.
+
+#### `polygon(R=1, n=6)`
+*   **Description**: Generates a regular n-sided polygon. A regular polygon is equiangular (all angles are equal) and equilateral (all sides have the same length).
+*   **Parameters**:
+    *   `R` (float): The **circumradius**. This is the distance from the exact center of the polygon to any of its vertices. (Default: 1).
+    *   `n` (int): The number of sides/vertices. Must be >= 3. (Default: 6).
+*   **Math Behind It**: Uses `np.linspace(0, 2*np.pi, n, endpoint=False)` to evenly distribute points along a circle of radius `R`, then connects them.
+*   **Example**:
+    ```python
+    # Creates a 10-sided polygon (decagon) with a radius of 15
+    poly = polygon(R=15, n=10)
+    ```
+
+#### `circle(R=1, step=0.1)`
+*   **Description**: Generates a perfect circle. In CAD, a true circle is a continuous curve, but `Shape2d` approximates it using a dense polygon. 
+*   **Parameters**:
+    *   `R` (float): The radius of the circle. (Default: 1).
+    *   `step` (float): The **arc length step**. This controls the density of the polygon approximation. A smaller step results in more segments, making the circle smoother. (Default: 0.1).
+*   **Math Behind It**: The function calculates the circumference using \(2 \pi R\), divides it by the `step` parameter to determine how many segments (`n`) are needed, and then calls `polygon(R, n)`. It enforces a minimum of 20 segments.
+*   **Example**:
+    ```python
+    # A smooth circle with radius 50
+    c = circle(R=50, step=0.05) 
+    # To make it 3D (a cylinder):
+    import FreeCAD
+    cylinder_solid = c.to_face().extrude(FreeCAD.Vector(0, 0, 20))
+    ```
+
+#### `rectangle(a=2, b=1)` & `square(a=1)`
+*   **Description**: Generates an axis-aligned rectangle or a perfect square.
+*   **Parameters**:
+    *   `a` (float): The length along the X-axis. (Default: 2 for rect, 1 for square).
+    *   `b` (float): The length along the Y-axis. (Default: 1).
+*   **Origin**: The rectangle is anchored at the origin `(0,0)` and extends into the positive X and Y quadrants.
+*   **Example**:
+    ```python
+    rect = rectangle(a=20, b=10)
+    sq = square(a=15)
+    ```
+
+#### `trapezoid(upper_side=1, lower_side=2, height=1)`
+*   **Description**: Generates an isosceles trapezoid (a quadrilateral with one pair of parallel sides).
+*   **Parameters**:
+    *   `upper_side` (float): The length of the top parallel edge. (Default: 1).
+    *   `lower_side` (float): The length of the bottom parallel edge. (Default: 2).
+    *   `height` (float): The vertical distance between the parallel sides. (Default: 1).
+*   **Example**:
+    ```python
+    trap = trapezoid(upper_side=10, lower_side=20, height=8)
+    ```
+
+#### `ellipse(a=2, b=1, step=0.1)`
+*   **Description**: Generates an ellipse. An ellipse is a curve on a plane surrounding two focal points such that a straight line drawn from one focal point to any point on the curve and then to the other focal point has a constant sum of distances.
+*   **Parameters**:
+    *   `a` (float): The semi-major axis (X-radius). (Default: 2).
+    *   `b` (float): The semi-minor axis (Y-radius). (Default: 1).
+    *   `step` (float): Controls the segment density, identical to `circle`.
+*   **Math Behind It**: Uses Ramanujan's approximation to calculate the ellipse perimeter, dividing by `step` to find the number of segments.
+*   **Example**:
+    ```python
+    oval = ellipse(a=30, b=10)
+    ```
+
+#### Regular Polygons (Wrappers)
+Code3D provides shortcut functions for common polygons by wrapping `polygon()`:
+*   `pentagon(R=1)`: 5 sides.
+*   `hexagon(R=1)`: 6 sides.
+*   `heptagon(R=1)`: 7 sides.
+*   `octagon(R=1)`: 8 sides.
+*   `nonagon(R=1)`: 9 sides.
+*   `decagon(R=1)`: 10 sides.
+*   **Example**: `hexagon(R=10)` creates a 10mm radius hexagon.
+
+---
 
 ### 6.2 Parametric Curves
-*   `parabola(a, b, w)`: A parabolic curve.
-*   `hyperbola(a, b, w)`: A hyperbolic curve.
-*   `spiral(a, b, num_turns)`: Archimedean spiral.
-*   `cardioid(a)`: Heart curve.
-*   `cycloid(a)`: Brachistochrone curve.
-*   `epicycloid(R, r)`: Curve traced by a point on a rolling circle.
-*   `hypocycloid(R, r)`: Curve traced inside a larger circle.
-*   `astroid(a)`: Star-shaped hypocycloid.
-*   `catenary(a)`: Hanging chain curve.
-*   `lemniscate(a)`: Figure-eight curve.
-*   `sine(...)`, `tangent(...)`: Trigonometric waves.
+
+These functions generate mathematically defined curves based on parametric equations. Unlike closed polygons, these curves are inherently **open** (unless explicitly closed by their mathematical nature). Because they do not enclose a volume, Code3D will render them as a `Wire` or a degenerate `Face`. They are highly recommended for path sweeps or lofting operations.
+
+#### `parabola(a=1, b=2, w=1, step=0.1)`
+*   **Description**: A plane curve which is mirror-symmetrical and is approximately U-shaped.
+*   **Parameters**:
+    *   `a` (float): Controls the "width" or sharpness of the parabola. Equation: \(y = \frac{x^2}{4a}\). (Default: 1).
+    *   `b` (float): The boundary limits. The curve will span from \(x = -b\) to \(x = +b\). (Default: 2).
+    *   `w` (float): Width multiplier used to calculate the total number of points (density). (Default: 1).
+    *   `step` (float): The resolution of the curve. (Default: 0.1).
+*   **Example**:
+    ```python
+    # A sharp, narrow parabola stretching from x=-5 to x=5
+    p = parabola(a=0.5, b=5)
+    ```
+
+#### `hyperbola(a=1, b=1, w=1, step=0.1)`
+*   **Description**: A curve formed by the intersection of a double cone and a plane, consisting of two separate branches.
+*   **Parameters**:
+    *   `a` (float): The distance from the center to the vertex on the X-axis. (Default: 1).
+    *   `b` (float): The distance from the center to the asymptote intersection on the Y-axis. (Default: 1).
+    *   `w` (float): Angle multiplier. The parameter \(t\) (used in \(\cosh(t)\) and \(\sinh(t)\)) spans from \(-w\pi\) to \(+w\pi\). (Default: 1).
+    *   `step` (float): Resolution. (Default: 0.1).
+*   **Math Behind It**: Uses parametric equations \(x = a \cosh(t)\), \(y = b \sinh(t)\).
+*   **Example**:
+    ```python
+    h = hyperbola(a=2, b=3)
+    ```
+
+#### `spiral(a=1, b=1, num_turns=2, step=0.1)`
+*   **Description**: Generates an Archimedean spiral. This is the classic spiral where the distance between successive turns remains constant.
+*   **Parameters**:
+    *   `a` (float): Growth rate along the X-axis. (Default: 1).
+    *   `b` (float): Growth rate along the Y-axis. (Default: 1).
+    *   `num_turns` (int): How many full revolutions the spiral makes around the origin. (Default: 2).
+    *   `step` (float): Resolution. (Default: 0.1).
+*   **Math Behind It**: \(x = a \cdot t \cdot \cos(t)\), \(y = b \cdot t \cdot \sin(t)\).
+*   **Example**:
+    ```python
+    # A tight spring-like 2D spiral with 5 loops
+    s = spiral(a=1, b=1, num_turns=5)
+    ```
+
+#### `cardioid(a=1, step=0.1)`
+*   **Description**: A mathematically perfect heart shape.
+*   **Parameters**:
+    *   `a` (float): The overall scale of the heart. (Default: 1).
+    *   `step` (float): Resolution. (Default: 0.1).
+*   **Math Behind It**: Uses the parametric equations \(x = a(2\cos t - \cos 2t)\), \(y = a(2\sin t - \sin 2t)\). 
+*   **Example**:
+    ```python
+    heart = cardioid(a=10)
+    ```
+
+#### `cycloid(a=1, num_cycles=2, step=0.1)`
+*   **Description**: The curve traced by a point on the rim of a circular wheel as the wheel rolls along a straight line without slipping. Also known as the Brachistochrone curve.
+*   **Parameters**:
+    *   `a` (float): The radius of the rolling circle. (Default: 1).
+    *   `num_cycles` (int): How many complete rotations the circle makes. (Default: 2).
+    *   `step` (float): Resolution. (Default: 0.1).
+*   **Example**:
+    ```python
+    cyc = cycloid(a=5, num_cycles=3)
+    ```
+
+#### `epicycloid(R=10, r=1, step=0.1)`
+*   **Description**: A plane curve produced by tracing the path of a chosen point on the circumference of a circle (radius `r`) which rolls without slipping around a fixed circle (radius `R`).
+*   **Parameters**:
+    *   `R` (float): The radius of the fixed base circle. (Default: 10).
+    *   `r` (float): The radius of the rolling outer circle. (Default: 1).
+    *   `step` (float): Resolution. (Default: 0.1).
+*   **Example**:
+    ```python
+    epi = epicycloid(R=20, r=5)
+    ```
+
+#### `hypocycloid(R=6, r=1, step=0.1)`
+*   **Description**: Similar to the epicycloid, but the smaller circle rolls on the **inside** of the larger fixed circle.
+*   **Parameters**:
+    *   `R` (float): The radius of the fixed base circle. (Default: 6).
+    *   `r` (float): The radius of the rolling inner circle. (Default: 1).
+    *   `step` (float): Resolution. (Default: 0.1).
+*   **Example**:
+    ```python
+    hypo = hypocycloid(R=15, r=3)
+    ```
+
+#### `astroid(a=1, step=0.1)`
+*   **Description**: A specific type of hypocycloid where the rolling circle's radius is 1/4th of the fixed circle's radius. It looks like a 4-pointed star.
+*   **Parameters**:
+    *   `a` (float): The scale of the star. (Default: 1).
+    *   `step` (float): Resolution. (Default: 0.1).
+*   **Math Behind It**: \(x = a\cos^3(t)\), \(y = a\sin^3(t)\).
+*   **Example**:
+    ```python
+    star = astroid(a=10)
+    ```
+
+#### `catenary(a=1, step=0.1)`
+*   **Description**: The curve that an idealized hanging chain or cable assumes under its own weight when supported only at its ends.
+*   **Parameters**:
+    *   `a` (float): The scaling factor (related to the tension and weight of the chain). (Default: 1).
+    *   `step` (float): Resolution. (Default: 0.1).
+*   **Example**:
+    ```python
+    chain = catenary(a=15)
+    ```
+
+#### `lemniscate(a=1, step=0.1)`
+*   **Description**: A figure-eight shaped curve (infinity symbol).
+*   **Parameters**:
+    *   `a` (float): The scale of the curve. (Default: 1).
+    *   `step` (float): Resolution. (Default: 0.1).
+*   **Example**:
+    ```python
+    infinity = lemniscate(a=10)
+    ```
+
+#### `semicircle(radius=1, step=0.1)`
+*   **Description**: A perfect half-circle starting from the right (X=radius) and sweeping counter-clockwise to the left (X=-radius).
+*   **Parameters**:
+    *   `radius` (float): The radius of the full circle. (Default: 1).
+    *   `step` (float): Resolution. (Default: 0.1).
+*   **Example**:
+    ```python
+    half_moon = semicircle(radius=20)
+    ```
+
+#### `sine(amplitude=1, frequency=1, x_start=0, x_end=2*np.pi, step=0.1)`
+*   **Description**: Generates a standard trigonometric sine wave.
+*   **Parameters**:
+    *   `amplitude` (float): The peak deviation from the center. (Default: 1).
+    *   `frequency` (float): The number of wave cycles per unit of X. (Default: 1).
+    *   `x_start` (float): The starting X coordinate. (Default: 0).
+    *   `x_end` (float): The ending X coordinate. (Default: \(2\pi\), exactly one full cycle).
+    *   `step` (float): Resolution. (Default: 0.1).
+*   **Example**:
+    ```python
+    # A high-frequency wave
+    wave = sine(amplitude=5, frequency=3, x_end=4*np.pi)
+    ```
+
+#### `tangent(x_start=-0.5*np.pi, x_end=0.5*np.pi, step=0.1, height=100)`
+*   **Description**: Generates a tangent curve. Because the tangent function goes to infinity at \(\pm \pi/2\), this function automatically clips the vertical asymptotes.
+*   **Parameters**:
+    *   `x_start`, `x_end` (float): The angular bounds (in radians).
+    *   `step` (float): Resolution. (Default: 0.1).
+    *   `height` (float): The clipping height limit. Y values exceeding this are automatically masked out to prevent infinite coordinate errors. (Default: 100).
+*   **Example**:
+    ```python
+    t_curve = tangent(x_start=-1.0, x_end=1.0, height=20)
+    ```
 
 ### 6.3 `free_curve(points, closed=False, make_face=False)`
 *   **Description**: Interpolates a B-Spline curve exactly through your custom points.
