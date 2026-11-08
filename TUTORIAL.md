@@ -138,12 +138,100 @@ When Code3D receives the result of an operation, it translates the `Shape` proxy
 *   **Description**: A donut shape.
 *   **Mathematical Foundation**: `major_radius` is the distance from the center of the hole to the center of the tube. `minor_radius` is the thickness of the tube itself.
 
-### 5.6 `ellipsoid(a, b, c)`
-*   **Description**: A sphere scaled along the X, Y, and Z axes.
+### 5.6 `ellipsoid(a=1, b=1, c=1)`
+*   **Description**: Creates an ellipsoid, which is a sphere that has been scaled (stretched or squashed) along the X, Y, and Z axes.
+*   **Mathematical Foundation**: 
+    *   The standard equation for a unit sphere is \(x^2 + y^2 + z^2 = 1\). 
+    *   An ellipsoid is defined by \(\frac{x^2}{a^2} + \frac{y^2}{b^2} + \frac{z^2}{c^2} = 1\).
+    *   **Under the Hood**: Code3D creates a native `Part.makeSphere(1.0)` (a perfect unit sphere). It then instantiates a `FreeCAD.Matrix()` and applies a non-uniform 3D scale: `mat.scale(a, b, c)`. Finally, it calls `sphere_shape.transformGeometry(mat)`. 
+*   **Topological Properties**: Because it is an affine transformation of a sphere, the B-Rep topology (the number of faces, edges, vertices) remains exactly the same as the original sphere. It remains fully UV-parameterized.
+*   **Parameters**:
+    *   `a` (float): Semi-axis length along the X-axis (X-radius). Default: 1.
+    *   `b` (float): Semi-axis length along the Y-axis (Y-radius). Default: 1.
+    *   `c` (float): Semi-axis length along the Z-axis (Z-radius). Default: 1.
+*   **Example 1: A flattened disk (oblate spheroid)**
+    ```python
+    # Stretched in X and Y, squashed in Z
+    disk = ellipsoid(a=20, b=20, c=2)
+Example 2: A elongated capsule (prolate spheroid)
 
-### 5.7 `prism(radius, n, height)` & `pyramid(radius, n, height)`
-*   **Description**: Regular polygonal prisms/pyramids.
-*   **Parameters**: `n` is the number of sides. `radius` is the circumradius (distance from center to vertex).
+python
+# Stretched vertically
+capsule = ellipsoid(a=5, b=5, c=30)
+5.7 prism(radius=1, n=3, height=1) & pyramid(radius=1, n=3, height=1)
+Description: Creates regular polygonal prisms (extruded n-gons) and pyramids (n-gons tapering to a single apex). Both are anchored at Z=0, extending upwards.
+
+Mathematical Foundation:
+
+prism: Calculates 
+n
+n vertices of a regular polygon on the XY plane using trigonometry: 
+x
+=
+r
+⋅
+cos
+⁡
+(
+2
+π
+i
+n
+)
+x=r⋅cos( 
+n
+2πi
+​
+ ), 
+y
+=
+r
+⋅
+sin
+⁡
+(
+2
+π
+i
+n
+)
+y=r⋅sin( 
+n
+2πi
+​
+ ). It connects them with Part.makePolygon() to form a base wire, converts it to a Part.Face(), and then applies face.extrude(FreeCAD.Vector(0, 0, height)).
+
+pyramid: Uses the same polygonal base. However, instead of extruding, it uses a Lofting algorithm: Part.makeLoft([base_face, Part.Vertex(0, 0, height)], True). It creates a smooth transition from the base face to a single apex point, resulting in a solid pyramid.
+
+Parameters:
+
+radius (float): The circumradius (distance from the geometric center to any vertex of the base polygon). Not the inradius. Default: 1.
+
+n (int): The number of sides for the polygonal base. 
+n
+≥
+3
+n≥3 (triangle). Default: 3.
+
+height (float): The total height of the extrusion or pyramid. Default: 1.
+
+Example 1: Hexagonal Prism
+
+python
+# A hexagon with circumradius 10, extruded to a height of 25
+hex_prism = prism(radius=10, n=6, height=25)
+Example 2: Octagonal Pyramid (Gazebo roof)
+
+python
+# An 8-sided pyramid with a base radius of 15 and a height of 20
+oct_pyramid = pyramid(radius=15, n=8, height=20)
+OCC Warning: If 
+n
+n is set to an extremely large number (e.g., 
+n
+=
+1000
+n=1000), the base approximates a circle, but OCC may experience high computation times when calculating the solid's topology. For circles, use cylinder() instead.
 
 ### 5.8 Platonic Solids
 *   `tetrahedron(a)` (4 faces)
@@ -808,10 +896,12 @@ Code3D injects `_` as a special object that dynamically hooks into your mouse se
 *   **Usage**: `_ & 2` applies a Fillet.
 *   **Mechanism**: It queries `FreeCADGui.Selection.getSelectionEx()`. If specific edges are selected, it applies the operation only to those edges. If a whole body is selected, it applies the operation to all edges.
 
-### 8.2 Fillet/Chamfer Algorithm
-*   **Positive Value**: `cube(10) & 2` -> Fillet (rounds the edges).
-*   **Negative Value**: `cube(10) & -2` -> Chamfer (bevels the edges).
-*   **Tree View**: Generates a `Fillet` or `Chamfer` node with the original object folded as a child.
+### 8.2 Perfect Tree Folding for Fillet & Chamfer
+When you execute `_ & 2` (Fillet) or `_ & -2` (Chamfer), the underlying `TransformFeature` and `ViewProviderTransform` classes perfectly replicate native CAD behavior in the Tree View:
+1. **Sign Check**: `> 0` executes Fillet; `< 0` executes Chamfer.
+2. **Node Generation**: Creates a `Part::FeaturePython` named `Fillet` or `Chamfer`.
+3. **Child Folding**: By overriding `getSubObjects()` and `claimChildren()` in the Proxy classes, it forces the original body to become its child, **automatically indenting** it in the Tree View.
+4. **Native Icon**: The `ViewProvider` pulls the blue `Part_Fillet.svg` or `Part_Chamfer.svg` from FreeCAD's resources.
 
 ---
 
@@ -975,11 +1065,18 @@ bracket_with_holes & 2
 ### 10.3 Case Study: Decorative Vase
 ```python
 import FreeCAD
-# 1. Create a 2D profile
-profile = free_curve([(0,0), (10,20), (5,40), (8,60)], closed=False)
-# 2. Extrude and twist
-vase_solid = profile.to_face().extrude(FreeCAD.Vector(0,0,80))
-vase_solid ^ [0, 0, 0.1]
+# 1. Create a smooth 2D profile (make_face=True ensures it closes into a Face)
+# Without it, an open wire cannot be extruded into a solid.
+profile = free_curve([(0,0), (10,20), (5,40), (8,60)], closed=True, make_face=True)
+
+# 2. Extract the face and extrude it upwards by 80mm
+vase_solid = profile.Shape.extrude(FreeCAD.Vector(0, 0, 80))
+
+# 3. Show the base vase in the document
+show(vase_solid, "Vase_Base")
+
+# 4. Apply spiral twist using the ^ operator (0.1 radians per unit of height)
+part("Vase_Base") ^ [0, 0, 0.1]
 ```
 
 ---
