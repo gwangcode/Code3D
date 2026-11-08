@@ -154,7 +154,7 @@ When Code3D receives the result of an operation, it translates the `Shape` proxy
     disk = ellipsoid(a=20, b=20, c=2)
     ```
 
-  Example 2: A elongated capsule (prolate spheroid)
+*   **Example 2: A elongated capsule (prolate spheroid)**
 
    ```python
    # Stretched vertically
