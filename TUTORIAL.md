@@ -1,5 +1,4 @@
 # 📘 Code3D Workbench: The Exhaustive Master Manual
-**Version 1.2.0 – Architect Edition**
 
 ## 📑 Table of Contents
 1. **Introduction & Architectural Philosophy**
