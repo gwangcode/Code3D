@@ -25,7 +25,9 @@ def test_selection_proxy(mock_get_selection):
     
     mock_get_selection.return_value = [mock_obj]
     
-    proxy = SelectionProxy()
+    # 【修复】传入一个模拟的 terminal 对象
+    mock_terminal = MagicMock()
+    proxy = SelectionProxy(mock_terminal)
     
     # 1. 测试圆角
     fillet_result = proxy & 2.0
@@ -47,15 +49,15 @@ def test_selection_proxy_specific_edges(mock_get_selection):
     mock_obj = MagicMock()
     mock_obj.Object.Shape = box
     
-    # 直接使用真实边（不要给只读属性赋值）
     mock_edge = box.Edges[0]
     mock_obj.SubObjects = [mock_edge]
     
     mock_get_selection.return_value = [mock_obj]
     
-    proxy = SelectionProxy()
-    result = proxy & 2.0
+    mock_terminal = MagicMock()
+    proxy = SelectionProxy(mock_terminal)
     
+    result = proxy & 2.0
     assert result.isValid()
 
 @patch('FreeCADGui.Selection.getSelectionEx')
@@ -77,7 +79,7 @@ def test_terminal_execute_proxy(mock_get_selection):
     # 模拟终端里的 `_ & 1` 命令
     term.execute_code("_ & 2.0")
     
-    # 验证是否生成了新的 model 对象
-    model_1 = doc.getObject("model_1")
-    assert model_1 is not None
-    assert model_1.Shape.isValid()
+    # 【修复】现在会生成带有父子关系的 Fillet 节点，而不是 model_1
+    fillet_node = doc.getObject("Fillet")
+    assert fillet_node is not None
+    assert fillet_node.Shape.isValid()
