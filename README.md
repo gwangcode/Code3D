@@ -102,7 +102,7 @@ free_curve([(0,0), (10,-5), (15,5), (5,15), (-5,5)], closed=True, make_face=True
 points([(0,0,0), (5,5,5), (10,10,10)])
 ```
 
-**7. Fillet & Chamfer (New!):**
+**7. Fillet & Chamfer:**
 ```python
 # Apply Fillet (radius 2) to all edges of a cube
 cube(10) & 2
