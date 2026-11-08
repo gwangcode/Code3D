@@ -815,20 +815,135 @@ Code3D injects `_` as a special object that dynamically hooks into your mouse se
 
 ---
 
-## 9. Utility Functions & Document Management
+Here is the ultra-detailed, exhaustive expansion for Section 9 of your manual. It includes deep-dive algorithmic explanations, parameter breakdowns, and multiple practical examples.
 
-### 9.1 `sketch(shape, "Sketch_001")`
-*   **Description**: Extracts all planar edges of a `Face` and pushes them into a `Sketcher::SketchObject`.
-*   **Mechanism**: Calculates the surface normal to align the Sketch's coordinate system, then iterates through the edges, calling `addGeometry()`.
+---
 
-### 9.2 `apply_noise(shape, density, smoothness, amplitude, seed)`
-*   **Description**: Adds procedural noise (like rocks or meteorites).
-*   **Algorithm**:
-    1.  Tesselates the shape.
-    2.  Generates random noise.
-    3.  Applies `scipy.ndimage.gaussian_filter`.
-    4.  Displaces vertices along their normals.
-    5.  Rebuilds the solid.
+# 9. Utility Functions & Document Management
+
+Beyond basic geometry generation, Code3D provides powerful utility functions that bridge the gap between 3D space, 2D sketching, and procedural mesh manipulation. These functions allow you to reverse-engineer 3D shapes into 2D profiles, and apply complex mathematical textures to your models.
+
+### 9.1 `sketch(shape_obj, sketch_name=None)`
+
+#### 1. Functional Concept
+The `sketch()` function is a reverse-engineering tool. In CAD, you usually create a 2D sketch and extrude it into a 3D solid. This function does the exact opposite: it takes a **3D Face** (like the top of a box or a curved cut surface) and extracts all of its boundary edges, pushing them into a native FreeCAD `Sketcher::SketchObject`.
+
+#### 2. The Mathematical Pipeline (Under the Hood)
+Extracting edges from a 3D face is easy. The hard part is making sure the resulting 2D Sketch doesn't look distorted. If you just dump 3D edges into a Sketch, they might be projected onto the default XY plane, destroying the true shape. 
+
+Code3D solves this with a 4-step coordinate alignment:
+1. **Plane Extraction**: It accesses the first `Face` of the geometry and inspects its underlying `Surface` (e.g., `Part.Plane`). It extracts the **Normal Vector** (`Surface.Axis`) and a **Point on the Plane** (`Surface.Position`).
+2. **Rotation Calculation**: It calculates the quaternion rotation required to align the default Z-axis `(0, 0, 1)` with the Face's Normal Vector.
+3. **Placement Application**: It applies this rotation and position to the `Sketcher::SketchObject`'s `Placement` property. This ensures the Sketch is perfectly parallel to the 3D face.
+4. **Geometry Injection**: It iterates through `face.Edges` and calls `sketch.addGeometry(edge, False)`. The `False` parameter indicates these are normal construction lines, not reference geometry.
+
+#### 3. Parameters
+*   **`shape_obj`** (`Shape` | `Part.Shape`): The 3D object containing the Face you want to extract.
+*   **`sketch_name`** (`str`, optional): The desired name for the Sketch object in the FreeCAD tree. If left as `None`, the engine will auto-generate names like `Sketch_001`, `Sketch_002`, etc., preventing name collisions.
+
+#### 4. Examples
+
+**Example 1: Extracting a Slanted Face**
+```python
+# 1. Create a cube and rotate it slightly
+import FreeCAD
+my_cube = cube(20)
+my_cube @ [0.5, 0.5, 0] # Rotate in X and Y
+
+# 2. Extract the top face (using index 5, which is usually the top)
+top_face = my_cube.Faces[5]
+
+# 3. Push it into a Sketch
+# Because the cube is rotated, the Sketch will automatically align its plane to match the slanted face!
+my_sketch = sketch(top_face, "Slanted_Profile")
+```
+
+**Example 2: Extracting a Complex Boolean Cut**
+```python
+# 1. Create a block with a hole
+base = cube(30)
+hole = cylinder(10, 40) + [15, 15, -5]
+perforated_block = base - hole
+
+# 2. Find the face with the hole in it (usually the top)
+# We look for a face that has an inner wire (a hole)
+face_with_hole = [f for f in perforated_block.Faces if len(f.Wires) > 1][0]
+
+# 3. Extract the outer boundary and the inner hole into a Sketch
+final_sketch = sketch(face_with_hole, "Washer_Profile")
+```
+
+> 💡 **Pro Tip**: This function is extremely useful when you want to re-use a complex 3D contour for a 2D laser-cut or CNC operation.
+
+---
+
+### 9.2 `apply_noise(shape, density=0.5, smoothness=2.0, amplitude=1.0, seed=0)`
+
+#### 1. Functional Concept
+This function applies **Procedural 3D Noise** to a shape. It simulates natural erosion, rocky textures, and organic imperfections. It is the difference between a "perfect mathematical sphere" and a "rough asteroid". 
+
+#### 2. The Mathematical Pipeline (Under the Hood)
+Instead of using a simple random offset (which would create a spiky, chaotic mess), Code3D uses **Gaussian-blurred 3D Noise**:
+
+1. **Tessellation**: The B-Rep solid is temporarily converted into a triangulated mesh (vertices and faces) using `_tessellate()`.
+2. **Bounding Box & Padding**: It calculates the bounding box of the mesh and adds a 10% padding to ensure the noise field completely envelops the object.
+3. **Grid Generation**: It generates a 3D grid of random floating-point numbers. The resolution of this grid is determined by the `density` parameter.
+4. **Gaussian Smoothing**: It applies `scipy.ndimage.gaussian_filter` to the grid. This blurs the random noise, turning it into smooth, organic hills and valleys (similar to Perlin Noise). The `smoothness` parameter controls the blur radius.
+5. **Coordinate Mapping**: It maps every mesh vertex to a coordinate inside this 3D noise grid.
+6. **Normal Displacement**: It calculates the normal vector of every vertex. It then pushes or pulls the vertex along its normal direction. The distance pushed is determined by the interpolated noise value multiplied by the `amplitude`.
+7. **Solidification**: It rebuilds the modified mesh back into a B-Rep solid using `_tri_mesh_to_shape()`.
+
+#### 3. Parameters
+*   **`shape`** (`Shape`): The input object to deform.
+*   **`density`** (float): Controls the frequency of the noise. 
+    *   *High density (e.g., 1.0)*: Sharp, high-frequency bumps (looks like sandpaper or coral).
+    *   *Low density (e.g., 0.1)*: Broad, slow-changing bumps (looks like planetary continents).
+*   **`smoothness`** (float): Controls the `sigma` of the Gaussian blur. Higher values make the noise softer and rounder.
+*   **`amplitude`** (float): The physical distance (in millimeters) the surface is pushed in or out. 
+*   **`seed`** (int): The random seed. Using the same seed guarantees identical results every time, which is crucial for reproducible parametric models.
+
+#### 4. Examples
+
+**Example 1: The Perfect Asteroid**
+```python
+# 1. Start with a perfect sphere
+base_sphere = sphere(20)
+
+# 2. Apply noise to make it look like a space rock
+# High density, moderate amplitude
+asteroid = apply_noise(
+    base_sphere, 
+    density=0.8,   # High frequency bumps
+    smoothness=1.5,# Slightly jagged
+    amplitude=2.5, # 2.5mm displacement
+    seed=42        # Fixed seed for determinism
+)
+```
+
+**Example 2: Realistic Terrain/Topography**
+```python
+# 1. Create a flat plate
+plate = cuboid(100, 100, 5)
+
+# 2. Apply very smooth, low-frequency noise to the top to simulate mountains
+# Low density, high amplitude, very smooth
+terrain = apply_noise(
+    plate, 
+    density=0.05,  # Large, sweeping hills
+    smoothness=5.0,# Very smooth, rolling mountains
+    amplitude=15.0,# High peaks
+    seed=100
+)
+```
+
+**Example 3: Combining Noise with Real-time Parametric Updates**
+If you execute `apply_noise()` in the terminal, Code3D creates a **Parametric `Noise` Node** in the FreeCAD tree. 
+1. Click on the `Noise` node in the tree view.
+2. Look at the **Data** tab in the FreeCAD property panel.
+3. You will see `Density`, `Smoothness`, `Amplitude`, and `Seed` are all fully editable!
+4. Change `Seed` from `42` to `99`, and press `Enter`. The asteroid will instantly generate a completely new, unique shape without you having to type a single line of Python again.
+
+> ⚠️ **Warning**: Applying an extreme `amplitude` (e.g., 50mm on a 10mm sphere) will cause the mesh vertices to cross over each other (self-intersection). OpenCASCADE will likely throw an error or generate a corrupted, non-manifold solid when trying to rebuild the B-Rep. Always keep the amplitude relative to the size of your object.
 
 ---
 
