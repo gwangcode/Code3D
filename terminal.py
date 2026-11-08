@@ -24,6 +24,37 @@ try:
 except ImportError as e:
     FreeCAD.Console.PrintError(f"Failed to load mod3d: {e}\n")
 
+# ==========================================
+# 【新增】用于实现完美折叠的静态特征类
+# ==========================================
+class TransformFeature:
+    def __init__(self, obj, op_type="Feature"):
+        obj.addProperty("App::PropertyLink", "Base", "Base", "Base Object")
+        obj.Proxy = self
+        self.op_type = op_type
+    def execute(self, obj):
+        pass
+    def getSubObjects(self):
+        return [self.Base] if self.Base else []
+
+class ViewProviderTransform:
+    def __init__(self, vobj, op_type="Feature"):
+        vobj.Proxy = self
+        self.op_type = op_type
+    def getIcon(self):
+        if self.op_type == "Fillet":
+            return ":/icons/Part_Fillet.svg"
+        elif self.op_type == "Chamfer":
+            return ":/icons/Part_Chamfer.svg"
+        return ":/icons/Tree_Part.svg"
+    def claimChildren(self):
+        if hasattr(self.ViewObject, "Object") and hasattr(self.ViewObject.Object, "Base") and self.ViewObject.Object.Base:
+            return [self.ViewObject.Object.Base]
+        return []
+    def attach(self, vobj): self.ViewObject = vobj
+    def updateData(self, fp, prop): pass
+    def onChanged(self, vp, prop): pass
+
 
 class SelectionProxy:
     """拦截 `_ & 数字` 的操作，动态获取当前选中的对象"""
@@ -201,11 +232,12 @@ class PythonTerminal(QtWidgets.QPlainTextEdit):
                 elif t_type == "scale": name_prefix = "Scale"
                 elif t_type == "shear": name_prefix = "Shear"
 
-                new_obj = doc.addObject("Part::Feature", get_next_name(name_prefix))
-                new_obj.Shape = node.shape
+                new_obj = doc.addObject("Part::FeaturePython", get_next_name(name_prefix))
+                TransformFeature(new_obj, name_prefix)
+                if hasattr(new_obj, 'ViewObject') and new_obj.ViewObject:
+                    ViewProviderTransform(new_obj.ViewObject, name_prefix)
                 
-                if not hasattr(new_obj, "Base"):
-                    new_obj.addProperty("App::PropertyLink", "Base", "Base", "Base Object")
+                new_obj.Shape = node.shape
                 new_obj.Base = child_obj
                 return new_obj
             else:
