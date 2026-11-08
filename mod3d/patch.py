@@ -101,7 +101,8 @@ class Shape:
     def __and__(self, other):
         if isinstance(other, (int, float)):
             new_shape = apply_fillet_chamfer(self.shape, other)
-            return Shape(new_shape, op="transform", children=[self])
+            op_type = "fillet" if other > 0 else "chamfer"
+            return Shape(new_shape, op="transform", children=[self], transform_data=(op_type, other))
         raise ValueError(f"Unsupported operand for &: {type(other)}")
 
     def __getattr__(self, name):
