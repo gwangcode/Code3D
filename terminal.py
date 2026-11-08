@@ -15,16 +15,57 @@ except ImportError:
     except ImportError:
         from PySide import QtCore, QtGui, QtWidgets
 
-# ==========================================
-# 【核心修复】恢复全局导入，确保类方法和外部测试能访问
-# ==========================================
 try:
     import mod3d
     from mod3d.shapes import Shape2d
     from mod3d.parametric import NoiseFeature, ViewProviderNoise, TwistFeature, ViewProviderTwist
-    from utils import show
+    from mod3d.utils import show
 except ImportError as e:
     FreeCAD.Console.PrintError(f"Failed to load mod3d: {e}\n")
+
+
+class SelectionProxy:
+    """拦截 `_ & 数字` 的操作，动态获取当前选中的对象"""
+    def __and__(self, other):
+        if isinstance(other, (int, float)):
+            from mod3d.utils import apply_fillet_chamfer
+            from mod3d.patch import Shape
+            
+            selection = FreeCADGui.Selection.getSelectionEx()
+            if not selection:
+                raise ValueError("Please select objects or edges in the 3D view first.")
+            
+            shapes = []
+            for sel in selection:
+                obj = sel.Object
+                if not hasattr(obj, "Shape") or not obj.Shape:
+                    continue
+                
+                edges = None
+                if sel.SubObjects:
+                    edges = [sub for sub in sel.SubObjects if sub.ShapeType == "Edge"]
+                    if not edges:
+                        faces = [sub for sub in sel.SubObjects if sub.ShapeType == "Face"]
+                        if faces:
+                            edges = [e for f in faces for e in f.Edges]
+                
+                new_shape = apply_fillet_chamfer(obj.Shape, other, edges)
+                if new_shape:
+                    shapes.append(new_shape)
+            
+            if not shapes:
+                raise ValueError("No valid geometry to process.")
+            
+            import Part
+            if len(shapes) == 1:
+                return Shape(shapes[0])
+            else:
+                return Shape(Part.makeCompound(shapes))
+                
+        raise ValueError(f"Unsupported operand for &: {type(other)}")
+        
+    def __repr__(self):
+        return "<Selection Proxy>"
 
 
 class PythonTerminal(QtWidgets.QPlainTextEdit):
@@ -73,6 +114,7 @@ class PythonTerminal(QtWidgets.QPlainTextEdit):
         self.local_vars = {
             "App": FreeCAD, "Gui": FreeCADGui, "Part": Part,
             "part": self._part_func, "V": FreeCAD.Vector, "runf": runf,
+            "_": SelectionProxy() # 【注入选择代理】
         }
         if 'show' in globals(): self.local_vars["show"] = show
         if 'mod3d' in globals():
@@ -256,13 +298,9 @@ class PythonTerminal(QtWidgets.QPlainTextEdit):
         cursor.insertText(text)
         self.moveCursor(QtGui.QTextCursor.End)
 
-    # ==========================================
-    # 【新增】鼠标点击拦截，防止光标跨行跳到历史记录
-    # ==========================================
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
         cursor = self.textCursor()
-        # 如果只是单击（没有拖拽产生选区），强制光标回到底部
         if not cursor.hasSelection():
             cursor.movePosition(QtGui.QTextCursor.End)
             self.setTextCursor(cursor)
@@ -270,31 +308,23 @@ class PythonTerminal(QtWidgets.QPlainTextEdit):
     def mouseReleaseEvent(self, event):
         super().mouseReleaseEvent(event)
         cursor = self.textCursor()
-        # 如果用户没选中任何文字，强制光标归位
         if not cursor.hasSelection():
             cursor.movePosition(QtGui.QTextCursor.End)
             self.setTextCursor(cursor)
 
     def keyPressEvent(self, event):
-        # ==========================================
-        # 【修复】在按键入口处强制校验光标位置
-        # ==========================================
         cursor = self.textCursor()
         doc_end = len(self.toPlainText())
         
-        # 1. 如果没有选区，且光标不在文档最后，强制吸回最后一行
         if not cursor.hasSelection() and cursor.position() != doc_end:
             cursor.movePosition(QtGui.QTextCursor.End)
             self.setTextCursor(cursor)
             
-        # 2. 如果用户在历史记录区选中了代码，并试图输入（覆盖）或按退格删除
-        # 取消选区并强制回到底部，防止篡改历史行。但保留 Ctrl+C 等快捷键复制。
         if cursor.hasSelection() and cursor.selectionStart() < doc_end:
             if event.text() or event.key() in (QtCore.Qt.Key_Backspace, QtCore.Qt.Key_Delete, QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter):
                 if not (event.modifiers() & QtCore.Qt.ControlModifier):
                     cursor.movePosition(QtGui.QTextCursor.End)
                     self.setTextCursor(cursor)
-        # ==========================================
 
         cursor = self.textCursor()
         block = cursor.block()
