@@ -1,0 +1,67 @@
+import pytest
+from unittest.mock import MagicMock
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QTextCursor, QKeyEvent
+
+def test_terminal_cursor_restriction(term):
+    """
+    测试：防止用户点击或按键篡改历史输入行的代码
+    """
+    # 假设终端里已经有两行代码（历史行 + 当前行）
+    # 注意：由于 conftest 里 mock 了 toPlainText，这里我们强行改一下让长度匹配
+    term.toPlainText = MagicMock(return_value=">>> cube(10)\n>>> ")
+    term.document = MagicMock()
+    term.document.characterCount = MagicMock(return_value=len(">>> cube(10)\n>>> "))
+
+    # 模拟当前光标对象
+    mock_cursor = MagicMock()
+    mock_cursor.position.return_value = 5  # 假装光标在历史行 "cube" 的位置
+    mock_cursor.hasSelection.return_value = False
+    mock_cursor.selectionStart.return_value = 5
+    term.textCursor = MagicMock(return_value=mock_cursor)
+
+    # 1. 测试鼠标点击（MousePress）
+    mock_mouse_event = MagicMock()
+    term.mousePressEvent(mock_mouse_event)
+    
+    # 验证光标是否被强行拉到了最后 (movePosition(End) 被调用)
+    mock_cursor.movePosition.assert_any_call(QTextCursor.End)
+    term.setTextCursor.assert_any_call(mock_cursor)
+
+    # 2. 测试键盘按键（KeyPress）- 模拟输入了字母 'x'
+    mock_key_event = MagicMock()
+    mock_key_event.text.return_value = "x"
+    mock_key_event.key.return_value = Qt.Key_X
+    mock_key_event.modifiers.return_value = Qt.NoModifier
+    
+    # 重置光标状态
+    mock_cursor.reset_mock()
+    term.setTextCursor.reset_mock()
+    
+    term.keyPressEvent(mock_key_event)
+    
+    # 验证按键时，即使光标在历史区，也会被强行拉回最后
+    mock_cursor.movePosition.assert_any_call(QTextCursor.End)
+    term.setTextCursor.assert_any_call(mock_cursor)
+
+def test_terminal_selection_allowed(term):
+    """
+    测试：允许用户在选中历史代码时进行复制操作，不被打断
+    """
+    term.toPlainText = MagicMock(return_value=">>> cube(10)\n>>> ")
+    
+    mock_cursor = MagicMock()
+    mock_cursor.position.return_value = 5
+    mock_cursor.hasSelection.return_value = True  # 假设用户拖拽选中了文本
+    mock_cursor.selectionStart.return_value = 3
+    mock_cursor.selectionEnd.return_value = 7
+    term.textCursor = MagicMock(return_value=mock_cursor)
+    term.setTextCursor = MagicMock()
+
+    # 模拟鼠标松开（此时用户已经选中了文本）
+    mock_mouse_event = MagicMock()
+    term.mouseReleaseEvent(mock_mouse_event)
+    
+    # 验证：因为存在选区，光标不应该被强制弹回最后
+    mock_cursor.movePosition.assert_not_called()
+    term.setTextCursor.assert_not_called()
