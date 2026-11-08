@@ -15,13 +15,9 @@ def setup_freecad_doc():
     if FreeCAD.ActiveDocument:
         FreeCAD.closeDocument(doc_name)
 
-# ==========================================
-# 1. 测试 SelectionProxy 代理逻辑
-# ==========================================
 @patch('FreeCADGui.Selection.getSelectionEx')
 def test_selection_proxy(mock_get_selection):
     """测试 _ & 1 是否成功抓取选中的几何体并做圆角"""
-    # 构建一个假的选择对象
     box = Part.makeBox(10, 10, 10)
     mock_obj = MagicMock()
     mock_obj.Object.Shape = box
@@ -33,12 +29,13 @@ def test_selection_proxy(mock_get_selection):
     
     # 1. 测试圆角
     fillet_result = proxy & 2.0
-    assert fillet_result.Shape.isValid()
-    assert len(fillet_result.Shape.Edges) > 12
+    # 【修复】不要加 .Shape，因为 fillet_result 本身就是 mod3d 包装类
+    assert fillet_result.isValid()
+    assert len(fillet_result.Faces) > 6
     
     # 2. 测试倒角
     chamfer_result = proxy & -2.0
-    assert chamfer_result.Shape.isValid()
+    assert chamfer_result.isValid()
     
     # 3. 测试错误输入
     with pytest.raises(ValueError, match="Unsupported operand"):
@@ -49,13 +46,12 @@ def test_selection_proxy_specific_edges(mock_get_selection):
     """测试 _ & 1 选中了特定的边"""
     box = Part.makeBox(10, 10, 10)
     
-    # 构造一个选了特定 edge 的 Mock
     mock_obj = MagicMock()
     mock_obj.Object.Shape = box
     
-    # 模拟选中了第一条边
+    # 【修复】真实边对象的 ShapeType 本来就是 'Edge'，且为只读属性，不能直接赋值。
+    # 我们直接拿真实的 edge 即可。
     mock_edge = box.Edges[0]
-    mock_edge.ShapeType = "Edge"
     mock_obj.SubObjects = [mock_edge]
     
     mock_get_selection.return_value = [mock_obj]
@@ -63,13 +59,8 @@ def test_selection_proxy_specific_edges(mock_get_selection):
     proxy = SelectionProxy()
     result = proxy & 2.0
     
-    assert result.Shape.isValid()
-    # 局部圆角通常不会增加太多面，此处只要断言有效即可
+    assert result.isValid()
 
-
-# ==========================================
-# 2. 测试终端环境下直接输入 `_ & 1`
-# ==========================================
 @patch('FreeCADGui.Selection.getSelectionEx')
 def test_terminal_execute_proxy(mock_get_selection):
     """测试终端内的执行逻辑 (eval 模式)"""
@@ -79,7 +70,6 @@ def test_terminal_execute_proxy(mock_get_selection):
     obj = doc.addObject("Part::Feature", "TestBox")
     obj.Shape = box
     
-    # 模拟选中
     mock_sel = MagicMock()
     mock_sel.Object = obj
     mock_sel.SubObjects = []
