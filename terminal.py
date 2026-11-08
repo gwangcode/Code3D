@@ -27,6 +27,9 @@ except ImportError as e:
 
 class SelectionProxy:
     """拦截 `_ & 数字` 的操作，动态获取当前选中的对象"""
+    def __init__(self, terminal):
+        self.terminal = terminal
+
     def __and__(self, other):
         if isinstance(other, (int, float)):
             from mod3d.patch import Shape
@@ -35,7 +38,7 @@ class SelectionProxy:
             if not selection:
                 raise ValueError("Please select objects or edges in the 3D view first.")
             
-            shapes = []
+            nodes = []
             for sel in selection:
                 obj = sel.Object
                 if not hasattr(obj, "Shape") or not obj.Shape:
@@ -51,16 +54,20 @@ class SelectionProxy:
                 
                 new_shape = apply_fillet_chamfer(obj.Shape, other, edges)
                 if new_shape:
-                    shapes.append(new_shape)
+                    op_type = "fillet" if other > 0 else "chamfer"
+                    self.terminal._consumed_targets.append(obj.Name)
+                    base_shape = Shape(obj.Shape, doc_name=obj.Name)
+                    nodes.append(Shape(new_shape, op="transform", children=[base_shape], transform_data=(op_type, other)))
             
-            if not shapes:
+            if not nodes:
                 raise ValueError("No valid geometry to process.")
             
+            if len(nodes) == 1:
+                return nodes[0]
+            
             import Part
-            if len(shapes) == 1:
-                return Shape(shapes[0])
-            else:
-                return Shape(Part.makeCompound(shapes))
+            compound_shape = Part.makeCompound([n.shape for n in nodes])
+            return Shape(compound_shape, op="fuse", children=nodes)
                 
         raise ValueError(f"Unsupported operand for &: {type(other)}")
         
@@ -116,7 +123,7 @@ class PythonTerminal(QtWidgets.QPlainTextEdit):
             "part": self._part_func, "V": FreeCAD.Vector, "runf": runf,
             "show": show,
             "sketch": sketch,
-            "_": SelectionProxy() 
+            "_": SelectionProxy(self)
         }
         if 'mod3d' in globals():
             self.local_vars["mod3d"] = mod3d
@@ -187,6 +194,20 @@ class PythonTerminal(QtWidgets.QPlainTextEdit):
                     FreeCAD.Rotation(FreeCAD.Vector(0, 1, 0), math.degrees(data[1])) * \
                     FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), math.degrees(data[2]))
                 return child_obj
+            elif t_type in ("fillet", "chamfer", "scale", "shear"):
+                name_prefix = "Feature"
+                if t_type == "fillet": name_prefix = "Fillet"
+                elif t_type == "chamfer": name_prefix = "Chamfer"
+                elif t_type == "scale": name_prefix = "Scale"
+                elif t_type == "shear": name_prefix = "Shear"
+
+                new_obj = doc.addObject("Part::Feature", get_next_name(name_prefix))
+                new_obj.Shape = node.shape
+                
+                if not hasattr(new_obj, "Base"):
+                    new_obj.addProperty("App::PropertyLink", "Base", "Base", "Base Object")
+                new_obj.Base = child_obj
+                return new_obj
             else:
                 new_obj = doc.addObject("Part::Feature", get_next_name("Feature"))
                 new_obj.Shape = node.shape
