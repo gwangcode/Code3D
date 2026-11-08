@@ -46,14 +46,19 @@ def extremes(part) -> tuple:
     return bb.XMin, bb.XMax, bb.YMin, bb.YMax, bb.ZMin, bb.ZMax
 
 def apply_fillet_chamfer(shape, radius, selected_edges=None):
-    """执行倒角/圆角操作"""
+   
     if not shape.Edges:
         return shape
         
+    indices = []
     if selected_edges:
-        try:
-            indices = [shape.Edges.index(e) for e in selected_edges]
-        except ValueError:
+        for e in selected_edges:
+  
+            idx = next((i for i, orig_e in enumerate(shape.Edges) if orig_e.isSame(e)), -1)
+            if idx != -1:
+                indices.append(idx)
+      
+        if not indices:
             indices = list(range(len(shape.Edges)))
     else:
         indices = list(range(len(shape.Edges)))
