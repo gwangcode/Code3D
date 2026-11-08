@@ -98,6 +98,14 @@ class Shape:
             new_verts[i] = (Rx @ Ry @ Rz) @ np.array([x, y, z])
         return Shape(_tri_mesh_to_shape(new_verts, faces), op="twist", children=[self], parameters={"angles": angles})
 
+    # 【新增】重载 & 运算符，处理 3D 实体圆角/倒角
+    def __and__(self, other):
+        if isinstance(other, (int, float)):
+            from .utils import apply_fillet_chamfer
+            new_shape = apply_fillet_chamfer(self.shape, other)
+            return Shape(new_shape, op="transform", children=[self])
+        raise ValueError(f"Unsupported operand for &: {type(other)}")
+
     def __getattr__(self, name):
         return getattr(self.shape, name)
 
