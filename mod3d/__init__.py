@@ -12,5 +12,5 @@ from .primitives import (
 )
 from .deformers import apply_noise, apply_noise_wire, brep_twist_z
 from .operations import array_rect, array_polar
-from .utils import extremes
+from .utils import extremes, sketch
 from .vis import showx, plothull, plot2d, plot3d
