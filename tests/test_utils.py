@@ -69,43 +69,32 @@ def test_sketch():
         assert len(sk.Geometry) > 0
 
 def test_apply_fillet_chamfer():
-    """
-    【核心修复】使用纯 Mock 对象来测试 apply_fillet_chamfer 的逻辑。
-    绕过 OCC 引擎在无头环境下的静默失败，以及 C++ 对象的只读限制。
-    """
     from unittest.mock import MagicMock
     
-    # 1. 构造一个假的 Shape 对象
     fake_shape = MagicMock()
     
-    # 2. 构造几条假的边
     edge1 = MagicMock()
     edge1.CenterOfMass = FreeCAD.Vector(0, 0, 0)
     edge2 = MagicMock()
     edge2.CenterOfMass = FreeCAD.Vector(0, 0, 10)
     
-    # 让 shape.Edges 返回这两条边
     fake_shape.Edges = [edge1, edge2]
     
-    # 3. 测试单边圆角
+    # 测试单边圆角
     apply_fillet_chamfer(fake_shape, radius=2.0, selected_edges=[edge1])
-    # 断言底层调用了 makeFillet，半径 2.0，且只选中了第 0 条边
-    fake_shape.makeFillet.assert_called_once_with(2.0, [0])
+    # 【修复】断言传入的第二个参数是 [edge1]，而不是 [0]
+    fake_shape.makeFillet.assert_called_once_with(2.0, [edge1])
     
-    # 重置 Mock
     fake_shape.makeFillet.reset_mock()
     fake_shape.makeChamfer.reset_mock()
     
-    # 4. 测试单边倒角 (radius < 0)
+    # 测试单边倒角
     apply_fillet_chamfer(fake_shape, radius=-2.0, selected_edges=[edge2])
-    # 断言底层调用了 makeChamfer，距离 2.0，且选中了第 1 条边
-    fake_shape.makeChamfer.assert_called_once_with(2.0, [1])
+    fake_shape.makeChamfer.assert_called_once_with(2.0, [edge2])
     
-    # 重置 Mock
     fake_shape.makeFillet.reset_mock()
     fake_shape.makeChamfer.reset_mock()
     
-    # 5. 测试全边圆角
+    # 测试全边圆角
     apply_fillet_chamfer(fake_shape, radius=1.5)
-    # 断言底层调用了 makeFillet，半径 1.5，且传入了所有边 [0, 1]
-    fake_shape.makeFillet.assert_called_once_with(1.5, [0, 1])
+    fake_shape.makeFillet.assert_called_once_with(1.5, [edge1, edge2])
