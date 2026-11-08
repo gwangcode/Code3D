@@ -46,20 +46,18 @@ def extremes(part) -> tuple:
     return bb.XMin, bb.XMax, bb.YMin, bb.YMax, bb.ZMin, bb.ZMax
 
 def apply_fillet_chamfer(shape, radius, selected_edges=None):
-   
+    """执行倒角/圆角操作"""
     if not shape.Edges:
         return shape
         
     indices = []
     if selected_edges:
         for e in selected_edges:
-  
-            idx = next((i for i, orig_e in enumerate(shape.Edges) if orig_e.isSame(e)), -1)
-            if idx != -1:
-                indices.append(idx)
-      
-        if not indices:
-            indices = list(range(len(shape.Edges)))
+            # 【核心修复】用质心坐标比对，绝对精确，不再依赖代理对象的 isSame
+            for i, orig_e in enumerate(shape.Edges):
+                if orig_e.CenterOfMass.isEqual(e.CenterOfMass, 1e-5):
+                    indices.append(i)
+                    break
     else:
         indices = list(range(len(shape.Edges)))
 
