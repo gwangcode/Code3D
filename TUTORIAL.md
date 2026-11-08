@@ -155,11 +155,10 @@ When Code3D receives the result of an operation, it translates the `Shape` proxy
     ```
 
 *   **Example 2: A elongated capsule (prolate spheroid)**
-
-   ```python
-   # Stretched vertically
-   capsule = ellipsoid(a=5, b=5, c=30)
-   ```
+    ```python
+    # Stretched vertically
+    capsule = ellipsoid(a=5, b=5, c=30)
+    ```
 
 ### 5.7 prism(radius=1, n=3, height=1) & pyramid(radius=1, n=3, height=1)
 **Description:** Creates regular polygonal prisms (extruded n-gons) and pyramids (n-gons tapering to a single apex). Both are anchored at Z=0, extending upwards.
