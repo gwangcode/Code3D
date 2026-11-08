@@ -146,3 +146,70 @@ def extremes(part) -> tuple:
     """
     bb = part.BoundBox
     return bb.XMin, bb.XMax, bb.YMin, bb.YMax, bb.ZMin, bb.ZMax
+
+def fillet_chamfer(value):
+    """
+    对当前选中的对象或边进行圆角或倒角。
+    如果 value > 0，执行 Fillet（圆角）。
+    如果 value < 0，执行 Chamfer（倒角）。
+    """
+    import FreeCAD
+    import FreeCADGui
+    
+    selection = FreeCADGui.Selection.getSelectionEx()
+    if not selection:
+        raise ValueError("Please select objects or edges in the 3D view or tree first.")
+        
+    doc = FreeCAD.ActiveDocument
+    if not doc:
+        raise ValueError("No active document.")
+        
+    success_count = 0
+    for sel in selection:
+        obj = sel.Object
+        if not hasattr(obj, "Shape") or not obj.Shape:
+            continue
+            
+        shape = obj.Shape
+        edges_to_process = []
+        
+        # 判断是否选中了子元素（比如边、面）
+        if sel.SubObjects:
+            for sub in sel.SubObjects:
+                if sub.ShapeType == "Edge":
+                    edges_to_process.append(sub)
+        else:
+            # 如果没选子元素，而是选了整个实体，则对其所有边操作
+            edges_to_process = shape.Edges
+            
+        if not edges_to_process:
+            continue
+            
+        try:
+            # 获取边的索引列表
+            indices = [shape.Edges.index(e) for e in edges_to_process]
+            
+            if value > 0:
+                new_shape = shape.makeFillet(value, indices)
+                suffix = "Fillet"
+            else:
+                new_shape = shape.makeChamfer(-value, indices)
+                suffix = "Chamfer"
+                
+            # 生成新对象
+            new_obj = doc.addObject("Part::Feature", f"{obj.Name}_{suffix}")
+            new_obj.Shape = new_shape
+            
+            # 隐藏原对象
+            if hasattr(obj, 'ViewObject') and obj.ViewObject:
+                obj.ViewObject.Visibility = False
+                
+            success_count += 1
+        except Exception as e:
+            FreeCAD.Console.PrintWarning(f"Failed to process {obj.Name}: {e}\n")
+            
+    if success_count > 0:
+        doc.recompute()
+        FreeCAD.Console.PrintMessage(f"✅ Successfully applied {'Fillet' if value > 0 else 'Chamfer'} to {success_count} object(s).\n")
+    else:
+        raise ValueError("No valid edges found to fillet/chamfer, or operation failed.")
