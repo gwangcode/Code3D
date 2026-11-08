@@ -12,11 +12,11 @@ Write Python code directly inside FreeCAD to generate geometry, apply noise defo
 
 - **🚀 Zero-Configuration & Blazing Fast**: No external CAD kernels (like CadQuery or OCP) to download. The terminal opens instantly.
 - **💻 Embedded Python Terminal**: A fully functional, dark-themed Python console docked inside FreeCAD. Supports multi-line inputs, intelligent syntax checking, and error-proof prompt protection.
-- **⚡ Operator Overloading Magic**: Directly use Python's math operators on FreeCAD shapes for rapid boolean operations, transformations, and deformations.
+- **⚡ Operator Overloading Magic**: Directly use Python's math operators on FreeCAD shapes for rapid boolean operations, transformations, and deformations. New `&` operator for instant Fillet/Chamfer!
+- **🖱️ Smart Object Picking & Selection Proxy**: Select objects or edges in the tree, use `Ctrl + Shift + C` to copy `part("object_name")`. Or use the `_` proxy to dynamically apply operations (like `_ & 1`) to anything currently selected on the canvas.
 - **🔄 Non-Destructive Parametric Modeling**: All boolean operations and deformations preserve your original models. It automatically generates native FreeCAD nodes (e.g., `Fusion`, `Cut`, `Noise`, `Twist`) and hides the source objects. You can delete the new node at any time to recover the originals!
 - **🧠 Real-Time Updates**: Because we generate native parametric nodes, modifying a base object (like changing a sphere's radius) will automatically cascade and update all downstream boolean or noise operations.
 - **🪨 Procedural Noise & Smoothing**: Apply natural, rocky textures to regular geometries, or generate globally smooth continuous B-Spline bodies from chaotic point clouds.
-- **🖱️ Smart Object Picking**: Select any object in the FreeCAD tree and press `Ctrl + Shift + C` to instantly copy `part("object_name")` to your clipboard and terminal.
 - **📜 Script Execution**: Run external Python files directly in the terminal context using `runf("path/to/script.py")`.
 
 ## 📦 Installation
@@ -102,7 +102,19 @@ free_curve([(0,0), (10,-5), (15,5), (5,15), (-5,5)], closed=True, make_face=True
 points([(0,0,0), (5,5,5), (10,10,10)])
 ```
 
-**7. Execute an external script:**
+**7. Fillet & Chamfer (New!):**
+```python
+# Apply Fillet (radius 2) to all edges of a cube
+cube(10) & 2
+
+# Apply Chamfer (distance 2) to all edges of a cube
+cube(10) & -2
+
+# Select an object or specific edges in the 3D view, then apply Fillet (1) or Chamfer (-1) directly:
+_ & 1
+```
+
+**8. Execute an external script:**
 ```python
 runf("D:/projects/my_complex_model.py")
 ```
@@ -124,6 +136,7 @@ Our terminal is designed to feel just like a native code REPL:
 | `clear` or `cls` | Clear the entire terminal screen. |
 | `runf("path")` | Execute an external Python file in the terminal context. |
 | `part("name")` | Retrieve a body/shape by name |
+| `_` | Proxies the currently selected object/edges/faces in the 3D view |
 
 *(Note: The terminal automatically protects the `>>> ` prompt. You cannot accidentally delete it with Backspace or move the cursor past it.)*
 
@@ -286,6 +299,7 @@ Once a 2D/3D shape is created or retrieved via `part("name")`, you can use the f
 | `@` | `shape @ [rx, ry, rz]` | **Rotation** (Radians) | In-place update (Modifies Placement) |
 | `%` | `shape % [sxy, sxz, syx, syz, szx, szy]` | **Shear Transformation** | Generates new static feature |
 | `^` | `shape ^ [ax, ay, az]` | **Twist** (Radians per unit) | Non-destructive (Creates `Twist` node) |
+| `&` | `shape & radius` | **Fillet / Chamfer** (Positive = Fillet, Negative = Chamfer) | Non-destructive (Creates new feature) |
 
 ---
 
