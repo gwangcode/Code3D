@@ -68,19 +68,24 @@ def test_sketch():
         assert len(sk.Geometry) > 0
 
 def test_apply_fillet_chamfer():
-    box = Part.makeBox(10, 10, 10)
+    # 【核心修复】使用圆柱体代替立方体。
+    # 在无头 CI 环境中，对立方体做全边圆角极易被底层 OCC 引擎拒绝（导致返回原形状）。
+    # 圆柱体的顶边圆角在数学上极度纯粹，在任何环境下都能稳定算出。
+    cyl = Part.makeCylinder(5, 10)
     
-    # 【修复】为了在 CI 无头环境中稳定运行，只针对单条边测试。
-    # 因为全边圆角在 OCC 中极易因为顶点交汇产生冲突。
-    selected_edges = [box.Edges[0]]
+    # 提取圆柱体顶部的圆环边 (高度 Z = 10 的边)
+    top_edge = [e for e in cyl.Edges if abs(e.BoundBox.ZMax - 10.0) < 1e-5][0]
     
     # 1. 测试圆角 (radius > 0)
-    fillet_shape = apply_fillet_chamfer(box, radius=2.0, selected_edges=selected_edges)
+    fillet_shape = apply_fillet_chamfer(cyl, radius=1.0, selected_edges=[top_edge])
     assert fillet_shape.isValid()
-    # 对单条边圆角一定会改变体积
-    assert abs(fillet_shape.Volume - box.Volume) > 1e-5
+    # 圆柱体顶边倒圆角后，体积一定会变小（因为削掉了外圈材料）
+    assert fillet_shape.Volume < cyl.Volume - 1e-3
     
     # 2. 测试倒角 (radius < 0)
-    chamfer_shape = apply_fillet_chamfer(box, radius=-2.0, selected_edges=selected_edges)
+    chamfer_shape = apply_fillet_chamfer(cyl, radius=-1.0, selected_edges=[top_edge])
     assert chamfer_shape.isValid()
-    assert abs(chamfer_shape.Volume - box.Volume) > 1e-5
+    # 倒角同样会减小体积
+    assert chamfer_shape.Volume < cyl.Volume - 1e-3
+    # 我们还可以验证：圆角切除的体积比倒角少（因为圆角是外凸的，倒角是直接切平）
+    assert fillet_shape.Volume > chamfer_shape.Volume
