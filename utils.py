@@ -25,3 +25,54 @@ def show(shape, name="Mod3D_Object"):
     
     FreeCAD.Console.PrintMessage(f"✅ Created FreeCAD object: {name}\n")
     return obj
+
+def sketch(shape_obj, sketch_name=None):
+    """
+    将给定对象的所有 Face 边界提取并转换到 Sketch 中。
+    """
+    doc = FreeCAD.ActiveDocument
+    if not doc:
+        doc = FreeCAD.newDocument("Code3D_Sketch")
+        FreeCAD.setActiveDocument(doc.Name)
+
+    # 兼容 mod3d 的包装类和原生的 Part.Shape
+    shape = shape_obj.Shape if hasattr(shape_obj, "Shape") else shape_obj
+    faces = shape.Faces
+    if not faces:
+        raise ValueError("The given object has no faces to extract.")
+
+    if not sketch_name:
+        idx = 1
+        sketch_name = f"Sketch_{idx:03d}"
+        while doc.getObject(sketch_name):
+            idx += 1
+            sketch_name = f"Sketch_{idx:03d}"
+
+    sk = doc.getObject(sketch_name)
+    if not sk:
+        sk = doc.addObject("Sketcher::SketchObject", sketch_name)
+    elif sk.TypeId != "Sketcher::SketchObject":
+        raise TypeError(f"'{sketch_name}' already exists but is not a Sketch object.")
+
+    first_face = faces[0]
+    try:
+        if hasattr(first_face.Surface, "Axis") and hasattr(first_face.Surface, "Position"):
+            plane_axis = first_face.Surface.Axis
+            plane_pos = first_face.Surface.Position
+            rot = FreeCAD.Rotation(FreeCAD.Vector(0, 0, 1), plane_axis)
+            sk.Placement = FreeCAD.Placement(plane_pos, rot)
+    except Exception:
+        pass
+
+    count = 0
+    for face in faces:
+        for edge in face.Edges:
+            try:
+                sk.addGeometry(edge, False)
+                count += 1
+            except Exception as e:
+                FreeCAD.Console.PrintWarning(f"Failed to add edge: {e}\n")
+
+    doc.recompute()
+    FreeCAD.Console.PrintMessage(f"✅ Successfully added {count} edges to Sketch '{sketch_name}'.\n")
+    return sk
