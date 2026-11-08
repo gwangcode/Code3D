@@ -170,8 +170,7 @@ When Code3D receives the result of an operation, it translates the `Shape` proxy
 
 **radius (float):** The circumradius (distance from the geometric center to any vertex of the base polygon). Not the inradius. Default: 1.
 
-n (int): The number of sides for the polygonal base. 
-n≥3 (triangle). Default: 3.
+**n (int):** The number of sides for the polygonal base. n≥3 (triangle). Default: 3.
 
 **height (float):** The total height of the extrusion or pyramid. Default: 1.
 
