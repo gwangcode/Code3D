@@ -139,6 +139,7 @@ The Code3D engine comes with a rich set of built-in 3D and 2D primitives. All 3D
 | :--- | :--- |
 | `point(x=0, y=0, z=0)` | Creates a single vertex/point at the given coordinates. |
 | `points(pts)` | Creates a point cloud from a list of `(x,y,z)` coordinates. |
+| `line(p1, p2)` | Creates a straight line segment (Wire) between two points (2D or 3D). |
 | `cuboid(a=1, b=1, c=1)` | Creates a box with length `a`, width `b`, and height `c`. |
 | `cube(a=1)` | Creates a cube with side length `a`. |
 | `cylinder(radius=1, height=1)` | Creates a cylinder. |
