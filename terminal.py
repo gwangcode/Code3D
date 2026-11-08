@@ -247,7 +247,55 @@ class PythonTerminal(QtWidgets.QPlainTextEdit):
         cursor.deletePreviousChar()
         self.moveCursor(QtGui.QTextCursor.End)
 
+    def _replace_current_line(self, text):
+        cursor = self.textCursor()
+        cursor.movePosition(QtGui.QTextCursor.StartOfLine)
+        cursor.movePosition(QtGui.QTextCursor.Right, n=4) 
+        cursor.movePosition(QtGui.QTextCursor.EndOfLine, QtGui.QTextCursor.KeepAnchor)
+        cursor.removeSelectedText()
+        cursor.insertText(text)
+        self.moveCursor(QtGui.QTextCursor.End)
+
+    # ==========================================
+    # 【新增】鼠标点击拦截，防止光标跨行跳到历史记录
+    # ==========================================
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        cursor = self.textCursor()
+        # 如果只是单击（没有拖拽产生选区），强制光标回到底部
+        if not cursor.hasSelection():
+            cursor.movePosition(QtGui.QTextCursor.End)
+            self.setTextCursor(cursor)
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        cursor = self.textCursor()
+        # 如果用户没选中任何文字，强制光标归位
+        if not cursor.hasSelection():
+            cursor.movePosition(QtGui.QTextCursor.End)
+            self.setTextCursor(cursor)
+
     def keyPressEvent(self, event):
+        # ==========================================
+        # 【修复】在按键入口处强制校验光标位置
+        # ==========================================
+        cursor = self.textCursor()
+        doc_end = len(self.toPlainText())
+        
+        # 1. 如果没有选区，且光标不在文档最后，强制吸回最后一行
+        if not cursor.hasSelection() and cursor.position() != doc_end:
+            cursor.movePosition(QtGui.QTextCursor.End)
+            self.setTextCursor(cursor)
+            
+        # 2. 如果用户在历史记录区选中了代码，并试图输入（覆盖）或按退格删除
+        # 取消选区并强制回到底部，防止篡改历史行。但保留 Ctrl+C 等快捷键复制。
+        if cursor.hasSelection() and cursor.selectionStart() < doc_end:
+            if event.text() or event.key() in (QtCore.Qt.Key_Backspace, QtCore.Qt.Key_Delete, QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter):
+                if not (event.modifiers() & QtCore.Qt.ControlModifier):
+                    cursor.movePosition(QtGui.QTextCursor.End)
+                    self.setTextCursor(cursor)
+        # ==========================================
+
         cursor = self.textCursor()
         block = cursor.block()
         line_text = block.text()
@@ -365,15 +413,6 @@ class PythonTerminal(QtWidgets.QPlainTextEdit):
             self.moveCursor(QtGui.QTextCursor.End)
         else:
             super().keyPressEvent(event)
-
-    def _replace_current_line(self, text):
-        cursor = self.textCursor()
-        cursor.movePosition(QtGui.QTextCursor.StartOfLine)
-        cursor.movePosition(QtGui.QTextCursor.Right, n=4) 
-        cursor.movePosition(QtGui.QTextCursor.EndOfLine, QtGui.QTextCursor.KeepAnchor)
-        cursor.removeSelectedText()
-        cursor.insertText(text)
-        self.moveCursor(QtGui.QTextCursor.End)
 
     def execute_code(self, code):
         if code.strip() in ("clear", "cls"):
