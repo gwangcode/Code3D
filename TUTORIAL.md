@@ -553,28 +553,251 @@ These functions generate mathematically defined curves based on parametric equat
 
 ---
 
-## 7. Advanced Point-Cloud & Surface Algorithms
+Here is the fully integrated, ultra-detailed manual section. The 1D and 2D examples have been seamlessly merged into Section 7.1, creating a comprehensive, 50-page manual quality guide.
 
-### 7.1 `bspline_surface(points, thickness)`
-*   **Description**: Generates a mathematically precise B-Spline surface.
-*   **1D Input**: `[(x,y,z), ...]`. Generates a closed curve. If coplanar, fills to a Face.
-*   **2D Input**: `[[(x,y,z), ...], ...]`. Generates a free-form surface through a grid of points.
-*   **Thickness**: Applies `face.thicken(thickness, 1e-5)` to hollow out the surface.
+---
+
+# 7. Advanced Surface & Point-Cloud Algorithms
+
+In standard CAD, you usually build shapes by sketching and extruding. In Code3D, we provide algorithmic tools to let you "grow" complex, organic geometry directly from raw coordinates or mathematical grids. 
+
+### 7.1 `bspline_surface(points, thickness=0.0)`
+
+#### 1. Mathematical Concept
+A B-Spline (Basis Spline) surface is a piecewise polynomial surface defined by a set of control points. Unlike standard polygons, a B-Spline surface is completely smooth (C2 continuous) across its entire domain. In Code3D, we use **Interpolation**, meaning the resulting mathematical surface will pass *exactly* through every single coordinate you provide.
+
+#### 2. The Execution Pipeline
+This function is highly **polymorphic**. Its behavior and underlying mathematical execution change drastically based on whether you feed it a 1D list or a 2D grid.
+
+**Scenario A: 1D Input (A contour)**
+*   **Format**: `[(x1, y1, z1), (x2, y2, z2), ...]`
+*   **Algorithm**: 
+    1. It extracts the points into native `FreeCAD.Vector` objects.
+    2. It creates a `Part.BSplineCurve` and calls `.interpolate(vecs, PeriodicFlag=True)`. The `PeriodicFlag=True` forces the curve to automatically close back on itself smoothly (C2 continuous at the seam).
+    3. It wraps the curve into a `Part.Wire`.
+    4. **Coplanar check**: It attempts to call `Part.Face(wire)`. If the points are perfectly flat (all on the same plane), it succeeds and returns a filled 2D surface. If the points are 3D (non-coplanar), OCC will throw an error, and the function will gracefully return the 3D Wire (the naked curve) instead.
+
+**Scenario B: 2D Input (A grid)**
+*   **Format**: `[[(x1, y1, z1), (x2, y2, z2), ...], [...], ...]` (A list of lists, representing a grid of rows and columns).
+*   **Algorithm**:
+    1. It converts the nested lists into a 2D matrix of `FreeCAD.Vector`.
+    2. It initializes a `Part.BSplineSurface()`.
+    3. It calls `.interpolate(vecs_2d)`. The OpenCASCADE engine calculates the polynomial basis functions required to create a smooth patch that hits every point.
+    4. It converts the surface into a topological `Part.Face`.
+
+#### 3. Parameters
+*   **`points`** (`list`): The coordinates defining the shape.
+*   **`thickness`** (`float`): If `thickness > 0.0`, the engine takes the generated `Face` and calls `face.thicken(thickness, 1e-5)`. This performs a 3D offset operation, generating a solid shell with the specified thickness and capping the edges. 
+    *   *Warning*: If `thickness` is greater than the local radius of curvature, the self-intersecting geometry will cause OCC to crash or return an invalid shape.
+
+#### 4. Detailed Examples: 1D vs. 2D Inputs
+
+##### 🔹 1D Input Examples (Flat Lists)
+
+**Example A: Coplanar 1D Point Set — Generates a Planar Face**
+If all points share the same Z coordinate (they are coplanar), the engine successfully closes the wire and automatically fills the interior to create a 2D planar Face.
+```python
+# 1. Define a set of points all lying flat on the XY plane
+pts_1d_coplanar = [
+    (0, 0, 0), 
+    (10, -5, 0), 
+    (20, 0, 0), 
+    (15, 10, 0), 
+    (5, 15, 0), 
+    (-5, 5, 0)
+]
+
+# 2. Generate the surface (actually a Face)
+# Because thickness is 0.0, it is a zero-thickness mathematical surface
+flat_face = bspline_surface(pts_1d_coplanar)
+```
+
+**Example B: Non-Coplanar 1D Point Set — Generates a 3D Wire**
+If the Z coordinates vary, the engine cannot flatten it into a single plane. It gracefully degrades and returns a 3D closed spatial curve (a Wire).
+```python
+import math
+
+# 1. Define a 3D spiral path
+pts_1d_3d = []
+for i in range(20):
+    angle = i * (2 * math.pi / 20)
+    x = 10 * math.cos(angle)
+    y = 10 * math.sin(angle)
+    z = i * 2  # Z axis gradually rises
+    pts_1d_3d.append((x, y, z))
+
+# 2. Generate the 3D curve
+# Note: Because it cannot generate a Face, the `thickness` parameter is ignored here
+spatial_wire = bspline_surface(pts_1d_3d)
+```
+
+**Example C: 1D Point Set + Thickness — Solidifying a Planar Face**
+If the 1D input is coplanar and successfully generates a Face, you can use the `thickness` parameter to extrude/offset it into a 3D solid plate.
+```python
+# A leaf-like shape
+pts_1d_leaf = [(0,0,0), (5,5,0), (10,0,0), (5,-5,0)]
+
+# Generates a solid plate with a thickness of 2.0mm
+solid_plate = bspline_surface(pts_1d_leaf, thickness=2.0)
+```
+
+##### 🔹 2D Input Examples (Grids)
+
+**Example D: Classic Wavy Surface (Terrain or Ocean)**
+Generate a \(5 \times 5\) grid using loops, and apply trigonometric functions to the Z-axis to create mathematical undulations.
+```python
+import math
+
+# 1. Build a 2D grid of points
+grid_points = []
+for i in range(5):
+    row = []
+    for j in range(5):
+        x = i * 10
+        y = j * 10
+        # Create a wave pattern using sine and cosine
+        z = 5 * math.sin(i) * math.cos(j) 
+        row.append((x, y, z))
+    grid_points.append(row)
+
+# 2. Generate the free-form surface
+wavy_surface = bspline_surface(grid_points)
+```
+
+**Example E: Tubular/Cylindrical Surface (Closed Grid)**
+If the coordinates of the first and last rows are identical, the generated surface will be mathematically closed in the U-direction, forming a seamless tube.
+```python
+import math
+
+# 1. Generate a cylindrical grid (10 rows, 8 columns)
+cyl_grid = []
+for i in range(10):
+    z = i * 2  # Height of each ring
+    row = []
+    for j in range(8):
+        # Angles from 0 to 2pi to ensure the loop closes perfectly
+        angle = j * (2 * math.pi / 7) 
+        x = 10 * math.cos(angle)
+        y = 10 * math.sin(angle)
+        row.append((x, y, z))
+    cyl_grid.append(row)
+
+# 2. Generate the tubular surface
+tube_surface = bspline_surface(cyl_grid)
+```
+
+**Example F: 2D Grid + Thickness — Creating Solid Shells**
+This is a highly common industrial design workflow. First, generate a smooth free-form surface, then add thickness to make it a 3D printable solid.
+```python
+# Assume we already have `grid_points` from Example D
+
+# Generate a wavy solid shell with a thickness of 1.5mm
+thick_shell = bspline_surface(grid_points, thickness=1.5)
+```
+
+##### 💡 Core Comparison: 1D vs. 2D Input
+
+| Feature | 1D Input (Flat List) | 2D Input (Nested List) |
+| :--- | :--- | :--- |
+| **Data Format** | `[(x,y,z), ...]` | `[[(x,y,z), ...], ...]` |
+| **Path Direction** | Only one linear path | Two directions: U and V (Rows & Columns) |
+| **Closure Method** | Automatically loops back (Periodic Curve) | Depends on whether the first/last rows or columns overlap |
+| **Generated Result** | Generates a **Face** (if coplanar) or a **Wire** (if 3D) | Always generates a **Face** (Free-form surface) |
+| **`thickness` Support** | Only works if a Face is successfully generated | Fully supported |
+
+---
 
 ### 7.2 `smooth_body(points, iterations=3)`
-*   **Description**: Transforms unordered, chaotic 3D points into a perfectly smooth, watertight organic solid.
-*   **Pipeline**:
-    1.  **Convex Hull**: Computes the initial bounding volume.
-    2.  **Catmull-Clark Subdivision**: Subdivides the mesh faces into smaller quads `iterations` times.
-    3.  **Taubin Smoothing**: Applies a Laplacian smoothing filter that preserves the overall volume (prevents shrinking).
-    4.  **Solidification**: Converts the final smoothed mesh back to a `Part.Solid`.
-*   **Caveats**: Cannot generate concave geometry (e.g., a donut).
-*   **Example**:
-    ```python
-    import random
-    pts = [(random.uniform(-10,10), random.uniform(-10,10), random.uniform(-10,10)) for _ in range(100)]
-    smooth_body(pts, iterations=3)
-    ```
+
+#### 1. Mathematical Concept
+The `smooth_body` algorithm is a **Reverse Engineering** pipeline. It solves a fundamental problem: *"Given a chaotic pile of 3D scan data (points), how do I create a mathematically beautiful, watertight, 3D printable solid?"*
+
+It uses Mesh Subdivision and Laplacian Smoothing. This is the exact same technology used in Hollywood VFX to smooth low-poly character models into high-res organic forms.
+
+#### 2. The Execution Pipeline (Step-by-Step)
+
+**Step 1: Coplanarity Check & Initialization**
+*   Converts your points to a NumPy array.
+*   Uses SVD (Singular Value Decomposition) to check if all points lie perfectly on a 2D plane. If they do, it gracefully degrades to a 2D Face. If they are 3D, it proceeds.
+
+**Step 2: Convex Hull (The Shrink-Wrap)**
+*   Utilizes `trimesh.convex.convex_hull`.
+*   It mathematically calculates the tightest polyhedron that contains all your points. The result is a faceted, low-polygon mesh (often looking like a jagged crystal or a rock).
+
+**Step 3: Catmull-Clark Subdivision (`iterations`)**
+*   The Convex Hull is a coarse mesh. Subdivision is the process of splitting every polygon into smaller polygons.
+*   In each iteration, every face is split into 4 quad faces. A new vertex is added at the center of every original face, and at the midpoint of every original edge.
+*   **Parameter `iterations`**: 
+    *   `1`: Slightly smoother, low face count.
+    *   `3` (Default): Very smooth, moderate face count.
+    *   `5+`: Extremely smooth, but generates millions of faces and will severely slow down FreeCAD.
+
+**Step 4: Taubin Smoothing**
+*   Standard Laplacian smoothing (moving every vertex to the average position of its neighbors) causes the overall volume to shrink dramatically (like a melting ice cube).
+*   Code3D uses **Taubin Smoothing**, which applies a positive smoothing pass (\(\lambda\)) followed by a negative inflation pass (\(\mu\)). This eliminates high-frequency noise (jagged edges) while *preserving the overall volume* of the object.
+
+**Step 5: Solidification**
+*   The smoothed mesh is converted to a FreeCAD `Mesh.Topology`.
+*   `Part.makeShapeFromMesh()` converts the triangles into a B-Rep Shell.
+*   `Part.makeSolid()` turns the closed shell into a mass-bearing Solid.
+
+#### 3. Parameters
+*   **`points`** (`list`): A list of `(x, y, z)` tuples. Requires at least 4 non-coplanar points.
+*   **`iterations`** (`int`): The number of subdivision passes. Higher values mean a smoother surface but exponentially higher file sizes and computation time. Default is 3.
+
+#### 4. Caveats & Warnings
+*   **Convexity Limitation (The Shrink-Wrap Effect)**: Because the pipeline starts with a Convex Hull, **it cannot generate concave shapes**. If your points form a bowl, a donut, or a crescent moon, the algorithm will stretch a flat skin over the hole, sealing it completely. 
+*   **Face Count Explosion**: A Convex hull of 100 points might have ~196 faces. After `iterations=3`, that becomes \(196 \times 4^3 = 12,544\) faces. Generating this on the fly in Python takes a few seconds. Setting `iterations=10` would generate billions of faces and crash your computer.
+
+#### 5. Detailed Examples
+
+**Example 1: Procedural Asteroid**
+Generating a natural-looking space rock from random data points.
+```python
+import random
+import math
+
+# 1. Generate a chaotic cloud of 80 random points
+# We give them a slight bias to form a spherical shape
+pts = []
+for _ in range(80):
+    theta = random.uniform(0, 3.14159)
+    phi = random.uniform(0, 6.28318)
+    r = random.uniform(8.0, 12.0) # Radius between 8 and 12
+    x = r * math.sin(theta) * math.cos(phi)
+    y = r * math.sin(theta) * math.sin(phi)
+    z = r * math.cos(theta)
+    pts.append((x, y, z))
+
+# 2. Generate the smooth solid
+# 4 iterations gives it a very organic, melted look
+asteroid = smooth_body(pts, iterations=4)
+
+# 3. Optional: Add procedural noise for surface detail
+detailed_asteroid = apply_noise(asteroid, density=0.5, amplitude=0.8, seed=42)
+```
+
+**Example 2: Repairing a Scanned Object**
+If you have raw LIDAR data (say, a scanned apple), the point cloud will have holes and noise.
+```python
+# Assume 'apple_scan' is a list of 500 points from a scanner
+apple_scan = [...] 
+
+# iterations=2 keeps the shape closer to the original data
+# Higher iterations will smooth out the dimple of the apple entirely
+clean_apple = smooth_body(apple_scan, iterations=2)
+```
+
+**Example 3: The Teardrop Crystal (Low-Poly Aesthetic)**
+You don't always want it perfectly smooth. Sometimes you want a faceted gemstone.
+```python
+# Generate points in a teardrop shape
+pts = [(random.uniform(-5, 5), random.uniform(-5, 5), random.uniform(0, 20)) for _ in range(50)]
+
+# iterations=0 applies just the Convex Hull (or minimal subdivision)
+# iterations=1 retains the faceted crystal look but slightly softens the edges
+crystal = smooth_body(pts, iterations=1)
+```
 
 ---
 
