@@ -156,21 +156,21 @@ When Code3D receives the result of an operation, it translates the `Shape` proxy
 *   **Description**: Computes the smallest convex polyhedron containing all points.
 *   **Algorithm**: Uses `trimesh.convex.convex_hull`, converts the resulting triangle mesh to a FreeCAD `Mesh`, and then solidifies it using `Part.makeSolid()`.
 
-### 1. Fundamental Definition & Mathematical Concept
+#### 1. Fundamental Definition & Mathematical Concept
 In computational geometry, the **Convex Hull** of a set of points is the smallest convex set that contains all the points. 
 *   In 2D space, imagine stretching a rubber band around all the given points and letting it snap tight. The shape enclosed by the rubber band is the 2D convex hull.
 *   In 3D space, imagine wrapping the points in shrink-wrap plastic. The resulting tightly wrapped 3D volume is the 3D convex hull.
 
 Code3D leverages this mathematical concept to generate a solid polyhedron from any arbitrary, unordered point cloud. It guarantees that all input points will either lie on the surface of the resulting solid or be strictly inside it.
 
-### 2. The Under-the-Hood Pipeline
+#### 2. The Under-the-Hood Pipeline
 The function signature is:
 ```python
 def convex_hull(vertices)
 ```
 It performs a complex series of cross-library operations to translate raw mathematical points into a valid FreeCAD B-Rep (Boundary Representation) Solid.
 
-#### Step 2.1: Array Normalization
+##### Step 2.1: Array Normalization
 ```python
 mesh = trimesh.convex.convex_hull(np.asarray(vertices, dtype=float))
 ```
@@ -178,7 +178,7 @@ mesh = trimesh.convex.convex_hull(np.asarray(vertices, dtype=float))
 *   **Conversion**: `np.asarray(..., dtype=float)` ensures that all inputs are strictly coerced into 64-bit floating-point numbers. This prevents integer overflow or type errors when the underlying C++ libraries process the coordinates.
 *   **Trimesh Engine**: The function passes the normalized array to `trimesh.convex.convex_hull`. Trimesh uses the **Qhull** algorithm (specifically Quickhull), which operates in \(O(n \log n)\) average time. It computes the triangle facets required to wrap the points.
 
-#### Step 2.2: Mesh Translation (Trimesh to FreeCAD)
+##### Step 2.2: Mesh Translation (Trimesh to FreeCAD)
 ```python
 mesh_obj = Mesh.Mesh()
 for f in mesh.faces:
@@ -194,7 +194,7 @@ for f in mesh.faces:
 *   **Triangulation**: Because a face in Trimesh is a triangle, we can extract its 3 vertices (`v0`, `v1`, `v2`).
 *   **Facet Injection**: We create a native FreeCAD `Mesh.Mesh()` object and use `addFacet()` to manually construct the mesh, triangle by triangle. We explicitly cast the coordinates to `float` to avoid any numpy float32/float64 pointer issues.
 
-#### Step 2.3: Mesh to B-Rep Conversion
+##### Step 2.3: Mesh to B-Rep Conversion
 ```python
 shape = Part.Shape()
 shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
@@ -203,7 +203,7 @@ shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
 *   **Tolerance**: The second parameter `0.1` is the **sewing tolerance**. OCC will attempt to stitch adjacent triangles together if their vertices are within 0.1mm of each other. This is crucial for closing gaps that might occur due to floating-point inaccuracies.
 *   **Result**: `shape` is now a `Part.Shell` (a hollow, zero-thickness collection of joined faces).
 
-#### Step 2.4: Solidification
+##### Step 2.4: Solidification
 ```python
 return Shape(Part.makeSolid(shape))
 ```
@@ -212,7 +212,7 @@ return Shape(Part.makeSolid(shape))
 
 ---
 
-### 3. Parameters and Return Values
+#### 3. Parameters and Return Values
 
 *   **Parameters**:
     *   `vertices`: `list` | `tuple` | `numpy.ndarray`. A list of 3D coordinates. 
@@ -222,27 +222,27 @@ return Shape(Part.makeSolid(shape))
 
 ---
 
-### 4. Edge Cases, Limitations & Troubleshooting
+#### 4. Edge Cases, Limitations & Troubleshooting
 
-#### 4.1 Coplanar Points (2D Input)
+##### 4.1 Coplanar Points (2D Input)
 If all points lie on the exact same plane (e.g., all Z coordinates are 0), Qhull will generate a flat, 2D polygon mesh. When `Part.makeSolid()` is called on a flat shell, it will **fail** because a solid requires an enclosed 3D volume.
 *   **Solution**: If you have 2D data, either use `free_curve()` with `make_face=True` or offset one of the points slightly in the Z-axis before calling `convex_hull()`.
 
-#### 4.2 Collinear Points (1D Input)
+##### 4.2 Collinear Points (1D Input)
 If all points lie on a single straight line, the algorithm will return a `Wire` (a line) or fail entirely. You need at least 3 non-collinear points to form a flat plane, and 4 non-coplanar points for a 3D solid.
 
-#### 4.3 Non-Manifold Geometry
+##### 4.3 Non-Manifold Geometry
 Because the convex hull mathematically guarantees a watertight surface, the resulting solid will **always** be a valid manifold geometry. You will never see "leaking" or "non-manifold" errors when exporting to STL for 3D printing.
 
-#### 4.4 Concavity Loss (The Shrink-wrap Effect)
+##### 4.4 Concavity Loss (The Shrink-wrap Effect)
 The biggest limitation of a Convex Hull is that it **erases all concavities**. If your point cloud forms a C-shape, a donut, or a bowl, the Convex Hull will stretch a tight "skin" over the opening, completely sealing it.
 *   **Alternative**: If you need concave shapes, use `smooth_body()` instead, which uses Catmull-Clark subdivision to preserve the unique geometric features of the points.
 
 ---
 
-### 5. Practical Applications & Examples
+#### 5. Practical Applications & Examples
 
-#### Example 1: The Ultimate Bounding Box
+##### Example 1: The Ultimate Bounding Box
 If you have a complex, rotated part and need the smallest oriented bounding box, Convex Hull is the first step.
 ```python
 # 1. Create a complex twisted shape
@@ -259,7 +259,7 @@ hull = convex_hull(pts)
 show(hull, "Bounding_Hull")
 ```
 
-#### Example 2: Wrapping a Point Cloud
+##### Example 2: Wrapping a Point Cloud
 If you have a list of random 3D coordinates and want to create a "meteor" or "asteroid" shape without the smoothness of `smooth_body`.
 ```python
 import random
@@ -274,7 +274,7 @@ rock = convex_hull(pts)
 final_rock = apply_noise(rock, density=0.5, amplitude=0.5)
 ```
 
-#### Example 3: Combining with Boolean Operations
+##### Example 3: Combining with Boolean Operations
 Because `convex_hull` returns a valid `Solid`, you can immediately use it as a cutting tool or a base body.
 ```python
 # Create a convex hull from a set of points
@@ -286,7 +286,7 @@ drill = cylinder(2, 20) + [0, 0, -5]
 final_shape = hull - drill
 ```
 
-#### Example 4: 2D Convex Hull via 3D Workaround
+##### Example 4: 2D Convex Hull via 3D Workaround
 If you absolutely must find the 2D convex hull of a set of `(x,y)` points, you can force it into 3D and then extract the face.
 ```python
 pts_2d = [(0,0), (10,5), (5,10), (15,15), (0,15)]
