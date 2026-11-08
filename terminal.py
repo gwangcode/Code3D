@@ -19,7 +19,8 @@ try:
     import mod3d
     from mod3d.shapes import Shape2d
     from mod3d.parametric import NoiseFeature, ViewProviderNoise, TwistFeature, ViewProviderTwist
-    from mod3d.utils import show
+    from mod3d.utils import apply_fillet_chamfer
+    from utils import show, sketch
 except ImportError as e:
     FreeCAD.Console.PrintError(f"Failed to load mod3d: {e}\n")
 
@@ -28,7 +29,6 @@ class SelectionProxy:
     """拦截 `_ & 数字` 的操作，动态获取当前选中的对象"""
     def __and__(self, other):
         if isinstance(other, (int, float)):
-            from mod3d.utils import apply_fillet_chamfer
             from mod3d.patch import Shape
             
             selection = FreeCADGui.Selection.getSelectionEx()
@@ -114,9 +114,10 @@ class PythonTerminal(QtWidgets.QPlainTextEdit):
         self.local_vars = {
             "App": FreeCAD, "Gui": FreeCADGui, "Part": Part,
             "part": self._part_func, "V": FreeCAD.Vector, "runf": runf,
-            "_": SelectionProxy() # 【注入选择代理】
+            "show": show,
+            "sketch": sketch,
+            "_": SelectionProxy() 
         }
-        if 'show' in globals(): self.local_vars["show"] = show
         if 'mod3d' in globals():
             self.local_vars["mod3d"] = mod3d
             for name in dir(mod3d):
