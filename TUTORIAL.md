@@ -155,83 +155,39 @@ When Code3D receives the result of an operation, it translates the `Shape` proxy
     disk = ellipsoid(a=20, b=20, c=2)
 Example 2: A elongated capsule (prolate spheroid)
 
-python
+```python
 # Stretched vertically
 capsule = ellipsoid(a=5, b=5, c=30)
+```
 5.7 prism(radius=1, n=3, height=1) & pyramid(radius=1, n=3, height=1)
 Description: Creates regular polygonal prisms (extruded n-gons) and pyramids (n-gons tapering to a single apex). Both are anchored at Z=0, extending upwards.
 
-Mathematical Foundation:
-
-prism: Calculates 
-n
-n vertices of a regular polygon on the XY plane using trigonometry: 
-x
-=
-r
-⋅
-cos
-⁡
-(
-2
-π
-i
-n
-)
-x=r⋅cos( 
-n
-2πi
-​
- ), 
-y
-=
-r
-⋅
-sin
-⁡
-(
-2
-π
-i
-n
-)
-y=r⋅sin( 
-n
-2πi
-​
- ). It connects them with Part.makePolygon() to form a base wire, converts it to a Part.Face(), and then applies face.extrude(FreeCAD.Vector(0, 0, height)).
-
-pyramid: Uses the same polygonal base. However, instead of extruding, it uses a Lofting algorithm: Part.makeLoft([base_face, Part.Vertex(0, 0, height)], True). It creates a smooth transition from the base face to a single apex point, resulting in a solid pyramid.
+pyramid: Uses the same polygonal base. However, instead of extruding, it uses a Lofting algorithm: `Part.makeLoft([base_face, Part.Vertex(0, 0, height)], True)`. It creates a smooth transition from the base face to a single apex point, resulting in a solid pyramid.
 
 Parameters:
 
 radius (float): The circumradius (distance from the geometric center to any vertex of the base polygon). Not the inradius. Default: 1.
 
 n (int): The number of sides for the polygonal base. 
-n
-≥
-3
+n ≥ 3
 n≥3 (triangle). Default: 3.
 
 height (float): The total height of the extrusion or pyramid. Default: 1.
 
 Example 1: Hexagonal Prism
 
-python
+```python
 # A hexagon with circumradius 10, extruded to a height of 25
 hex_prism = prism(radius=10, n=6, height=25)
+```
+
 Example 2: Octagonal Pyramid (Gazebo roof)
 
-python
+```python
 # An 8-sided pyramid with a base radius of 15 and a height of 20
 oct_pyramid = pyramid(radius=15, n=8, height=20)
-OCC Warning: If 
-n
-n is set to an extremely large number (e.g., 
-n
-=
-1000
-n=1000), the base approximates a circle, but OCC may experience high computation times when calculating the solid's topology. For circles, use cylinder() instead.
+```
+**OCC Warning:** If n is set to an extremely large number (e.g., the base approximates a circle, but OCC may experience high computation times when calculating the solid's topology. For circles, use cylinder() instead.
 
 ### 5.8 Platonic Solids
 *   `tetrahedron(a)` (4 faces)
