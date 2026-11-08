@@ -596,10 +596,6 @@ These functions generate mathematically defined curves based on parametric equat
 
 ---
 
-Here is the fully integrated, ultra-detailed manual section. The 1D and 2D examples have been seamlessly merged into Section 7.1, creating a comprehensive, 50-page manual quality guide.
-
----
-
 # 7. Advanced Surface & Point-Cloud Algorithms
 
 In standard CAD, you usually build shapes by sketching and extruding. In Code3D, we provide algorithmic tools to let you "grow" complex, organic geometry directly from raw coordinates or mathematical grids. 
