@@ -152,26 +152,28 @@ When Code3D receives the result of an operation, it translates the `Shape` proxy
     ```python
     # Stretched in X and Y, squashed in Z
     disk = ellipsoid(a=20, b=20, c=2)
-Example 2: A elongated capsule (prolate spheroid)
+    ```
 
-```python
-# Stretched vertically
-capsule = ellipsoid(a=5, b=5, c=30)
-```
-5.7 prism(radius=1, n=3, height=1) & pyramid(radius=1, n=3, height=1)
-Description: Creates regular polygonal prisms (extruded n-gons) and pyramids (n-gons tapering to a single apex). Both are anchored at Z=0, extending upwards.
+  Example 2: A elongated capsule (prolate spheroid)
 
-pyramid: Uses the same polygonal base. However, instead of extruding, it uses a Lofting algorithm: `Part.makeLoft([base_face, Part.Vertex(0, 0, height)], True)`. It creates a smooth transition from the base face to a single apex point, resulting in a solid pyramid.
+   ```python
+   # Stretched vertically
+   capsule = ellipsoid(a=5, b=5, c=30)
+   ```
 
-Parameters:
+### 5.7 prism(radius=1, n=3, height=1) & pyramid(radius=1, n=3, height=1)
+**Description:** Creates regular polygonal prisms (extruded n-gons) and pyramids (n-gons tapering to a single apex). Both are anchored at Z=0, extending upwards.
 
-radius (float): The circumradius (distance from the geometric center to any vertex of the base polygon). Not the inradius. Default: 1.
+**pyramid:** Uses the same polygonal base. However, instead of extruding, it uses a Lofting algorithm: `Part.makeLoft([base_face, Part.Vertex(0, 0, height)], True)`. It creates a smooth transition from the base face to a single apex point, resulting in a solid pyramid.
+
+**Parameters:**
+
+**radius (float):** The circumradius (distance from the geometric center to any vertex of the base polygon). Not the inradius. Default: 1.
 
 n (int): The number of sides for the polygonal base. 
-n ≥ 3
 n≥3 (triangle). Default: 3.
 
-height (float): The total height of the extrusion or pyramid. Default: 1.
+**height (float):** The total height of the extrusion or pyramid. Default: 1.
 
 Example 1: Hexagonal Prism
 
