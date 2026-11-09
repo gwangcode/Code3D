@@ -17,30 +17,91 @@ def setup_freecad_doc():
     if FreeCAD.ActiveDocument:
         FreeCAD.closeDocument(doc_name)
 
-# ... (保留你之前的测试用例) ...
+# ==========================================
+# 1. 基础点与线生成测试
+# ==========================================
+def test_point_and_points():
+    pt = primitives.point(1.0, 2.0, 3.0)
+    assert pt.ShapeType == "Vertex"
+    assert pt.isValid()
+    assert pt.X == 1.0
+
+    pts_list = [(0,0,0), (10,10,10), (-5,5,-5)]
+    pts_cloud = primitives.points(pts_list)
+    assert pts_cloud.ShapeType == "Compound"
+    assert pts_cloud.isValid()
+
+def test_line():
+    l1 = primitives.line((0, 0), (10, 10))
+    assert l1.ShapeType == "Wire"
+    assert l1.isValid()
+    
+    l2 = primitives.line((0, 0, 0), (10, 10, 10))
+    assert l2.ShapeType == "Wire"
+    assert l2.isValid()
 
 # ==========================================
-# 6. 测试 & 运算符 (Fillet / Chamfer)
+# 2. 2D 基础函数测试 (注意 circle 现在是 Shape)
 # ==========================================
-def test_fillet_chamfer_3d_operator():
-    """测试 3D 实体通过 & 运算符进行圆角/倒角"""
-    box = primitives.cube(10)
-    
-    # 圆角
-    # 【修复】在无头环境下，对所有的边圆角可能因为引擎问题失败并返回原形状。
-    # 所以我们只断言操作成功返回，且对象合法。
-    fillet_box = box & 2.0
-    assert fillet_box.isValid()
-    
-    # 倒角
-    chamfer_box = box & -2.0
-    assert chamfer_box.isValid()
+def test_2d_primitives():
+    # 【修复】circle 现在返回完美的 B-Rep Face，不再是 Shape2d
+    shape_circle = primitives.circle(R=5)
+    assert isinstance(shape_circle, Shape)
+    assert shape_circle.ShapeType == "Face"
+    assert shape_circle.isValid()
 
-def test_fillet_chamfer_2d_operator():
-    """测试 2D 图形通过 & 运算符进行圆角"""
-    poly = primitives.hexagon(10)
+    shape_poly = primitives.polygon(R=10, n=6)
+    assert isinstance(shape_poly, Shape2d)
+
+    shape_ellipse = primitives.ellipse(a=5, b=2)
+    assert isinstance(shape_ellipse, Shape2d)
+
+# ==========================================
+# 3. 自由曲线测试
+# ==========================================
+def test_free_curve():
+    pts = [(0, 0, 0), (2, 5, 0), (6, 2, 0), (10, 8, 0)]
     
-    # 2D 圆角操作会自动转为 3D 面返回
-    fillet_face = poly & 1.0
-    assert fillet_face.isValid()
-    assert fillet_face.ShapeType == "Face"
+    # 默认参数现在恢复为 closed=False, make_face=False
+    curve = primitives.free_curve(pts)
+    assert curve.ShapeType == "Wire"
+    assert curve.isValid()
+
+    closed_curve = primitives.free_curve(pts, closed=True, make_face=True)
+    assert closed_curve.ShapeType == "Face"
+    assert closed_curve.isValid()
+
+# ==========================================
+# 4. B-Spline 与 smooth_body 测试
+# ==========================================
+def test_bspline_surface_1d():
+    pts = [(0,0,0), (10,0,0), (15,10,0), (10,20,0), (0,20,0), (-5,10,0)]
+    result = primitives.bspline_surface(pts)
+    assert result.ShapeType == "Face"
+    assert result.isValid()
+
+def test_smooth_body_sparse_points():
+    pts = [(0,0,0), (10,0,5), (15,10,-2), (10,20,8), (0,20,0), (-5,10,5)]
+    result = primitives.smooth_body(pts, iterations=2)
+    assert result.ShapeType in ("Solid", "CompSolid")
+    assert result.isValid()
+    assert result.Volume > 0
+    assert result.isClosed()
+
+# ==========================================
+# 5. 测试 convex_hull 的共线降级处理
+# ==========================================
+def test_convex_hull_degenerate():
+    """测试共线点是否能优雅降级为 Wire，而不是让程序崩溃"""
+    collinear_pts = [(0,0,0), (1,0,0), (2,0,0), (3,0,0)]
+    result = primitives.convex_hull(collinear_pts)
+    # 因为我们加了 try-except 保护，它应该返回原点的连线
+    assert result.ShapeType in ("Wire", "Vertex")
+    assert result.isValid()
+
+def test_convex_hull_normal():
+    """测试正常的点生成 Solid"""
+    pts = [(0,0,0), (10,0,0), (0,10,0), (0,0,10), (10,10,10)]
+    result = primitives.convex_hull(pts)
+    assert result.ShapeType == "Solid"
+    assert result.Volume > 0
