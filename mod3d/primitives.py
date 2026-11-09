@@ -83,9 +83,6 @@ def icosahedron(a=1):
 # ---- Advanced Surface & Point-Cloud Generators ----
 # ==========================================
 def bspline_surface(points, thickness=0.0):
-    """
-    Creates a closed B-spline surface from a 1D point list or a 2D grid of points.
-    """
     if not points or len(points) == 0:
         raise ValueError("Point list cannot be empty.")
 
@@ -121,18 +118,12 @@ def bspline_surface(points, thickness=0.0):
 
 
 def smooth_body(points, iterations=3):
-    """
-    Generate a mathematically continuous (C1/C2) perfectly smooth body from unordered points.
-    Uses Convex Hull followed by Catmull-Clark Subdivision to achieve a globally smooth surface 
-    without any sharp edges.
-    """
     if not points or len(points) < 4:
         raise ValueError("At least 4 points are required to form a 3D solid.")
 
     vecs = [FreeCAD.Vector(p[0], p[1], p[2]) for p in points]
     np_pts = np.array([[v.x, v.y, v.z] for v in vecs])
 
-    # 1. Coplanarity check
     centroid = np_pts.mean(axis=0)
     centered_pts = np_pts - centroid
     u, s, vh = np.linalg.svd(centered_pts)
@@ -148,17 +139,14 @@ def smooth_body(points, iterations=3):
         except Exception:
             return Shape(Part.makePolygon(vecs))
 
-    # 2. Calculate the Convex Hull
     cloud = trimesh.points.PointCloud(np_pts)
     hull = cloud.convex_hull
 
-    # 3. Apply Subdivision and Taubin Smoothing
     try:
         smooth_mesh = hull.copy()
         for _ in range(iterations):
             smooth_mesh = smooth_mesh.subdivide()
             
-        # Taubin smoothing preserving volume
         smoothed_mesh = trimesh.smoothing.filter_taubin(smooth_mesh, lamb=0.5, nu=-0.53, iterations=10)
         vertices = smoothed_mesh.vertices
         faces = smoothed_mesh.faces
@@ -167,7 +155,6 @@ def smooth_body(points, iterations=3):
         vertices = hull.vertices
         faces = hull.faces
 
-    # 4. Convert the smooth mesh into FreeCAD format
     mesh = Mesh.Mesh()
     for f in faces:
         v0, v1, v2 = vertices[f[0]], vertices[f[1]], vertices[f[2]]
@@ -196,9 +183,11 @@ def polygon(R=1, n=6):
     t = np.linspace(0, 2*np.pi, n, endpoint=False)
     return Shape2d(np.column_stack([R*np.cos(t), R*np.sin(t)]))
 
-def circle(R=1, step=0.01):
-    n = max(int(np.ceil(2 * np.pi * R / step)), 36)
-    return polygon(R, n)
+def circle(R=1, **kwargs):
+    edge = Part.makeCircle(R)
+    wire = Part.Wire([edge])
+    face = Part.Face(wire)
+    return Shape(face)
 
 def rectangle(a=2, b=1):  return Shape2d([[0,0],[a,0],[a,b],[0,b]])
 def square(a=1):          return rectangle(a, a)
@@ -321,22 +310,15 @@ def free_curve(points, closed=True, make_face=True):
     return Shape(wire)
 
 def point(x=0, y=0, z=0):
-    """Creates a single vertex/point at the given coordinates."""
     return Shape(Part.Vertex(x, y, z))
 
 def points(pts):
-    """Creates a point cloud from a list of (x,y,z) coordinates."""
     if not pts:
         return Shape(Part.makeCompound([]))
     vertices = [Part.Vertex(p[0], p[1], p[2]) for p in pts]
     return Shape(Part.makeCompound(vertices))
 
 def line(p1, p2):
-    """
-    Creates a straight line segment between two points.
-    Accepts 2D (x,y) or 3D (x,y,z) coordinates.
-    Returns a Wire shape.
-    """
     v1 = FreeCAD.Vector(p1[0], p1[1], p1[2] if len(p1) == 3 else 0)
     v2 = FreeCAD.Vector(p2[0], p2[1], p2[2] if len(p2) == 3 else 0)
     edge = Part.makeLine(v1, v2)
