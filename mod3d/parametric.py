@@ -23,11 +23,11 @@ class NoiseFeature:
             amplitude=obj.Amplitude,
             seed=obj.Seed
         )
-        # 完美实践：只赋值，不调用任何 recompute
         obj.Shape = result.shape
 
 class ViewProviderNoise:
-    def __init__(self, vobj): vobj.Proxy = self
+    def __init__(self, vobj): 
+        vobj.Proxy = self
     def getIcon(self): return ":/icons/Tree_Part.svg"
     def attach(self, vobj): pass
     def updateData(self, fp, prop): pass
@@ -56,8 +56,9 @@ class TwistFeature:
             obj.Shape = res.shape
 
 class ViewProviderTwist:
-    def __init__(self, vobj): vobj.Proxy = self
+    def __init__(self, vobj): 
+        vobj.Proxy = self
     def getIcon(self): return ":/icons/Tree_Part.svg"
-    def attach(self, vobj): pass
+    def attach(self, vobj): pass 
     def updateData(self, fp, prop): pass
     def onChanged(self, vp, prop): pass
