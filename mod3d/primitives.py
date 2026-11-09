@@ -32,7 +32,6 @@ def prism(radius=1, n=3, height=1):
     face = Part.Face(wire)
     return Shape(face.extrude(FreeCAD.Vector(0, 0, height)))
 
-# 【优化】去掉了无用的 division 参数
 def pyramid(radius=1, n=3, height=1):
     pts = [FreeCAD.Vector(radius*np.cos(2*np.pi*i/n), radius*np.sin(2*np.pi*i/n), 0) for i in range(n)]
     pts.append(pts[0])
@@ -41,7 +40,6 @@ def pyramid(radius=1, n=3, height=1):
     return Shape(Part.makeLoft([face, Part.Vertex(FreeCAD.Vector(0, 0, height))], True))
 
 def convex_hull(vertices):
-    # 【优化】增加异常保护，防止共线/共面点导致崩溃
     try:
         mesh = trimesh.convex.convex_hull(np.asarray(vertices, dtype=float))
         mesh_obj = Mesh.Mesh()
@@ -128,7 +126,6 @@ def smooth_body(points, iterations=3):
     Uses Convex Hull followed by Catmull-Clark Subdivision to achieve a globally smooth surface 
     without any sharp edges.
     """
-    # 【优化】去掉了多余的内部 import（顶部已导入）
     if not points or len(points) < 4:
         raise ValueError("At least 4 points are required to form a 3D solid.")
 
@@ -199,8 +196,6 @@ def polygon(R=1, n=6):
     t = np.linspace(0, 2*np.pi, n, endpoint=False)
     return Shape2d(np.column_stack([R*np.cos(t), R*np.sin(t)]))
 
-# 【优化】恢复为纯正的 Shape2d，保证 2D 布尔运算一致性。
-# 提高了默认精度（step=0.01），逼近完美圆。
 def circle(R=1, step=0.01):
     n = max(int(np.ceil(2 * np.pi * R / step)), 36)
     return polygon(R, n)
@@ -295,8 +290,7 @@ def tangent(x_start=-0.5*np.pi, x_end=0.5*np.pi, step=0.1, height=100):
     mask = np.abs(y) < height
     return Shape2d(np.column_stack([x[mask], y[mask]]))
 
-# 【优化】默认参数恢复为 closed=False，make_face=False，更符合常规习惯
-def free_curve(points, closed=False, make_face=False):
+def free_curve(points, closed=True, make_face=True):
     if not points or len(points) < 2:
         raise ValueError("At least 2 points are required to form a curve.")
 
