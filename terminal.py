@@ -42,23 +42,34 @@ class ViewProviderTransform:
     def __init__(self, vobj, op_type="Feature"):
         vobj.Proxy = self
         self.op_type = op_type
+
     def getIcon(self):
         if self.op_type == "Fillet":
             return ":/icons/Part_Fillet.svg"
         elif self.op_type == "Chamfer":
             return ":/icons/Part_Chamfer.svg"
         return ":/icons/Tree_Part.svg"
+
     def claimChildren(self):
-        if hasattr(self, "ViewObject") and hasattr(self.ViewObject, "Object") and self.ViewObject.Object.Base:
-            return [self.ViewObject.Object.Base]
+        if hasattr(self, "Object") and hasattr(self.Object, "Base") and self.Object.Base:
+            return [self.Object.Base]
         return []
-    def attach(self, vobj): self.ViewObject = vobj
+
+    def attach(self, vobj): 
+        self.Object = vobj.Object
+
+    def dumps(self):
+        return {'op_type': self.op_type}
+
+    def loads(self, state):
+        if state:
+            self.op_type = state.get('op_type', 'Feature')
+
     def updateData(self, fp, prop): pass
     def onChanged(self, vp, prop): pass
 
 
 class SelectionProxy:
-    """拦截 `_ & 数字` 的操作，动态获取当前选中的对象"""
     def __init__(self, terminal):
         self.terminal = terminal
 
