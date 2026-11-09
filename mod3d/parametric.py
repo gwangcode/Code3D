@@ -29,7 +29,7 @@ class NoiseFeature:
 class ViewProviderNoise:
     def __init__(self, vobj): vobj.Proxy = self
     def getIcon(self): return ":/icons/Tree_Part.svg"
-    def attach(self, vobj): self.ViewObject = vobj
+    def attach(self, vobj): pass
     def updateData(self, fp, prop): pass
     def onChanged(self, vp, prop): pass
 
@@ -58,6 +58,6 @@ class TwistFeature:
 class ViewProviderTwist:
     def __init__(self, vobj): vobj.Proxy = self
     def getIcon(self): return ":/icons/Tree_Part.svg"
-    def attach(self, vobj): self.ViewObject = vobj
+    def attach(self, vobj): pass
     def updateData(self, fp, prop): pass
     def onChanged(self, vp, prop): pass
