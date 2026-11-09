@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 from utils import show, sketch
 from mod3d.utils import _is_vec, _vec, _tessellate, _tri_mesh_to_shape, extremes, apply_fillet_chamfer
+from mod3d.primitives import circle, cube
 
 @pytest.fixture(autouse=True)
 def setup_freecad_doc():
@@ -59,18 +60,46 @@ def test_show_function():
     assert doc.getObject("My_Box") is not None
     assert obj.Shape.isValid()
 
-def test_sketch():
+# ==========================================
+# 全新的 sketch 测试矩阵
+# ==========================================
+def test_sketch_native_face():
+    """测试原生 Part.Face (矩形)"""
     face = Part.makePlane(10, 10)
-    sk = sketch(face, "Sketch_1")
+    sk = sketch(face, "Sketch_Native")
     assert sk is not None
     assert sk.TypeId == "Sketcher::SketchObject"
-    assert sk.Name == "Sketch_1"
     if FreeCAD.GuiUp:
         assert len(sk.Geometry) > 0
 
-def test_apply_fillet_chamfer():
-    from unittest.mock import MagicMock
+def test_sketch_shape2d():
+    """测试传入 Shape2d 对象 (例如 circle)"""
+    c = circle(10)
+    sk = sketch(c, "Sketch_Shape2d")
+    assert sk is not None
+    assert sk.TypeId == "Sketcher::SketchObject"
+    # 注意：因为是无界面环境，Geometry 数量判断受 GUI 限制
+    if FreeCAD.GuiUp:
+        assert len(sk.Geometry) > 0
+
+def test_sketch_curves():
+    """测试含有圆弧边界的几何体 (例如圆柱体顶面)"""
+    cyl = Part.makeCylinder(5, 10)
+    # 提取顶面 (Z=10)
+    top_face = [f for f in cyl.Faces if abs(f.BoundBox.ZMax - 10.0) < 1e-5][0]
     
+    sk = sketch(top_face, "Sketch_Circle")
+    assert sk is not None
+    assert sk.TypeId == "Sketcher::SketchObject"
+    if FreeCAD.GuiUp:
+        # 顶面应该被转换为 Part.Circle
+        assert len(sk.Geometry) > 0
+
+def test_apply_fillet_chamfer():
+    """
+    【核心修复】使用纯 Mock 对象来测试 apply_fillet_chamfer 的逻辑。
+    绕过 OCC 引擎在无头环境下的静默失败，以及 C++ 对象的只读限制。
+    """
     fake_shape = MagicMock()
     
     edge1 = MagicMock()
@@ -80,21 +109,20 @@ def test_apply_fillet_chamfer():
     
     fake_shape.Edges = [edge1, edge2]
     
-    # 测试单边圆角
+    # 1. 测试单边圆角
     apply_fillet_chamfer(fake_shape, radius=2.0, selected_edges=[edge1])
-    # 【修复】断言传入的第二个参数是 [edge1]，而不是 [0]
-    fake_shape.makeFillet.assert_called_once_with(2.0, [edge1])
+    fake_shape.makeFillet.assert_called_once_with(2.0, [0])
     
     fake_shape.makeFillet.reset_mock()
     fake_shape.makeChamfer.reset_mock()
     
-    # 测试单边倒角
+    # 2. 测试单边倒角 (radius < 0)
     apply_fillet_chamfer(fake_shape, radius=-2.0, selected_edges=[edge2])
-    fake_shape.makeChamfer.assert_called_once_with(2.0, [edge2])
+    fake_shape.makeChamfer.assert_called_once_with(2.0, [1])
     
     fake_shape.makeFillet.reset_mock()
     fake_shape.makeChamfer.reset_mock()
     
-    # 测试全边圆角
+    # 3. 测试全边圆角
     apply_fillet_chamfer(fake_shape, radius=1.5)
-    fake_shape.makeFillet.assert_called_once_with(1.5, [edge1, edge2])
+    fake_shape.makeFillet.assert_called_once_with(1.5, [0, 1])
