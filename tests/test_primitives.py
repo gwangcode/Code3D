@@ -62,14 +62,20 @@ def test_2d_primitives():
 def test_free_curve():
     pts = [(0, 0, 0), (2, 5, 0), (6, 2, 0), (10, 8, 0)]
     
-    # 默认参数现在恢复为 closed=False, make_face=False
-    curve = primitives.free_curve(pts)
-    assert curve.ShapeType == "Wire"
-    assert curve.isValid()
+    # 1. 测试默认参数 (closed=True, make_face=True) -> 应该生成 Face
+    default_curve = primitives.free_curve(pts)
+    assert default_curve.ShapeType == "Face"
+    assert default_curve.isValid()
 
-    closed_curve = primitives.free_curve(pts, closed=True, make_face=True)
-    assert closed_curve.ShapeType == "Face"
-    assert closed_curve.isValid()
+    # 2. 测试显式传入 False -> 应该生成 Wire
+    open_curve = primitives.free_curve(pts, closed=False, make_face=False)
+    assert open_curve.ShapeType == "Wire"
+    assert open_curve.isValid()
+
+    # 3. 测试闭合但不生成面 -> 应该生成 Wire (闭环)
+    closed_wire = primitives.free_curve(pts, closed=True, make_face=False)
+    assert closed_wire.ShapeType == "Wire"
+    assert closed_wire.isClosed()
 
 # ==========================================
 # 4. B-Spline 与 smooth_body 测试
