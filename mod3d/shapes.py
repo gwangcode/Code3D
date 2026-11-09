@@ -23,17 +23,32 @@ class Shape2d:
             res = max(res.geoms, key=lambda g: g.area)
         return Shape2d(np.asarray(res.exterior.coords))
 
-    def __add__(self, o: Union['Shape2d', List[float]]) -> 'Shape2d':
+    def __add__(self, o) -> 'Shape2d':
+        from .patch import Shape
+        if isinstance(o, Shape):
+            my_face = self.to_face()
+            return Shape(my_face.fuse(o.shape).removeSplitter(), op="fuse", children=[Shape(my_face), o])
+            
         if isinstance(o, Shape2d): return self._shapely_op(o, 'union')
         if _is_vec(o, 2):          return Shape2d(self.vertices + np.asarray(o))
         raise ValueError(f"Unsupported operand for +: {type(o)}")
 
-    def __sub__(self, o: Union['Shape2d', List[float]]) -> 'Shape2d':
+    def __sub__(self, o) -> 'Shape2d':
+        from .patch import Shape
+        if isinstance(o, Shape):
+            my_face = self.to_face()
+            return Shape(my_face.cut(o.shape).removeSplitter(), op="cut", children=[Shape(my_face), o])
+
         if isinstance(o, Shape2d): return self._shapely_op(o, 'difference')
         if _is_vec(o, 2):          return Shape2d(self.vertices - np.asarray(o))
         raise ValueError(f"Unsupported operand for -: {type(o)}")
 
-    def __mul__(self, o: Union['Shape2d', float, List[float]]) -> 'Shape2d':
+    def __mul__(self, o) -> 'Shape2d':
+        from .patch import Shape
+        if isinstance(o, Shape):
+            my_face = self.to_face()
+            return Shape(my_face.common(o.shape).removeSplitter(), op="common", children=[Shape(my_face), o])
+
         if isinstance(o, Shape2d): return self._shapely_op(o, 'intersection')
         if isinstance(o, (int, float)): return Shape2d(self.vertices * o)
         if _is_vec(o, 2):          return Shape2d(self.vertices * np.asarray(o))
@@ -55,14 +70,6 @@ class Shape2d:
         v = self.vertices
         if len(v) and np.allclose(v[0], v[-1]): return Shape2d(v[:-1])
         return Shape2d(np.vstack([v, v[0]]))
-
-    def __and__(self, other):
-        if isinstance(other, (int, float)):
-            from .patch import Shape
-            face = self.to_face()
-            new_shape = apply_fillet_chamfer(face, other)
-            return Shape(new_shape)
-        raise ValueError(f"Unsupported operand for &: {type(other)}")
 
     def to_face(self) -> Part.Shape:
         vecs = [FreeCAD.Vector(p[0], p[1], 0) for p in self.vertices]
