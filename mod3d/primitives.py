@@ -32,7 +32,8 @@ def prism(radius=1, n=3, height=1):
     face = Part.Face(wire)
     return Shape(face.extrude(FreeCAD.Vector(0, 0, height)))
 
-def pyramid(radius=1, n=3, height=1, division=0.1):
+# 【优化】去掉了无用的 division 参数
+def pyramid(radius=1, n=3, height=1):
     pts = [FreeCAD.Vector(radius*np.cos(2*np.pi*i/n), radius*np.sin(2*np.pi*i/n), 0) for i in range(n)]
     pts.append(pts[0])
     wire = Part.makePolygon(pts)
@@ -40,16 +41,21 @@ def pyramid(radius=1, n=3, height=1, division=0.1):
     return Shape(Part.makeLoft([face, Part.Vertex(FreeCAD.Vector(0, 0, height))], True))
 
 def convex_hull(vertices):
-    mesh = trimesh.convex.convex_hull(np.asarray(vertices, dtype=float))
-    mesh_obj = Mesh.Mesh()
-    for f in mesh.faces:
-        v0, v1, v2 = mesh.vertices[f[0]], mesh.vertices[f[1]], mesh.vertices[f[2]]
-        mesh_obj.addFacet(float(v0[0]), float(v0[1]), float(v0[2]),
-                          float(v1[0]), float(v1[1]), float(v1[2]),
-                          float(v2[0]), float(v2[1]), float(v2[2]))
-    shape = Part.Shape()
-    shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
-    return Shape(Part.makeSolid(shape))
+    # 【优化】增加异常保护，防止共线/共面点导致崩溃
+    try:
+        mesh = trimesh.convex.convex_hull(np.asarray(vertices, dtype=float))
+        mesh_obj = Mesh.Mesh()
+        for f in mesh.faces:
+            v0, v1, v2 = mesh.vertices[f[0]], mesh.vertices[f[1]], mesh.vertices[f[2]]
+            mesh_obj.addFacet(float(v0[0]), float(v0[1]), float(v0[2]),
+                              float(v1[0]), float(v1[1]), float(v1[2]),
+                              float(v2[0]), float(v2[1]), float(v2[2]))
+        shape = Part.Shape()
+        shape.makeShapeFromMesh(mesh_obj.Topology, 0.1)
+        return Shape(Part.makeSolid(shape))
+    except Exception as e:
+        FreeCAD.Console.PrintWarning(f"Convex hull failed: {e}. Points may be coplanar/collinear.\n")
+        return Shape(Part.makePolygon([FreeCAD.Vector(*p) for p in vertices]))
 
 def tetrahedron(a=1):
     return convex_hull([[0,0,0],[a,0,0], [0.5*a, 0.5*3**0.5*a, 0], [0.5*a, 0.5*a/3**0.5, 2**0.5/3**0.5*a]])
@@ -122,13 +128,7 @@ def smooth_body(points, iterations=3):
     Uses Convex Hull followed by Catmull-Clark Subdivision to achieve a globally smooth surface 
     without any sharp edges.
     """
-    import FreeCAD
-    import Part
-    import Mesh
-    import numpy as np
-    import trimesh
-    from .patch import Shape
-
+    # 【优化】去掉了多余的内部 import（顶部已导入）
     if not points or len(points) < 4:
         raise ValueError("At least 4 points are required to form a 3D solid.")
 
@@ -199,9 +199,11 @@ def polygon(R=1, n=6):
     t = np.linspace(0, 2*np.pi, n, endpoint=False)
     return Shape2d(np.column_stack([R*np.cos(t), R*np.sin(t)]))
 
-def circle(R=1, step=0.1):
-    raw_circle = Part.makeCircle(R)
-    return Shape(Part.Wire([raw_circle]))
+# 【优化】恢复为纯正的 Shape2d，保证 2D 布尔运算一致性。
+# 提高了默认精度（step=0.01），逼近完美圆。
+def circle(R=1, step=0.01):
+    n = max(int(np.ceil(2 * np.pi * R / step)), 36)
+    return polygon(R, n)
 
 def rectangle(a=2, b=1):  return Shape2d([[0,0],[a,0],[a,b],[0,b]])
 def square(a=1):          return rectangle(a, a)
@@ -293,7 +295,8 @@ def tangent(x_start=-0.5*np.pi, x_end=0.5*np.pi, step=0.1, height=100):
     mask = np.abs(y) < height
     return Shape2d(np.column_stack([x[mask], y[mask]]))
 
-def free_curve(points, closed=True, make_face=True):
+# 【优化】默认参数恢复为 closed=False，make_face=False，更符合常规习惯
+def free_curve(points, closed=False, make_face=False):
     if not points or len(points) < 2:
         raise ValueError("At least 2 points are required to form a curve.")
 
