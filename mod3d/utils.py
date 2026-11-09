@@ -46,33 +46,29 @@ def extremes(part) -> tuple:
     return bb.XMin, bb.XMax, bb.YMin, bb.YMax, bb.ZMin, bb.ZMax
 
 def apply_fillet_chamfer(shape, radius, selected_edges=None):
- 
     if not shape.Edges:
         return shape
         
-    edges_to_process = []
+    indices = []
     if selected_edges:
         for e in selected_edges:
-            for orig_e in shape.Edges:
-             
+            for i, orig_e in enumerate(shape.Edges):
                 if orig_e.CenterOfMass.distanceToPoint(e.CenterOfMass) < 1e-4:
-                    edges_to_process.append(orig_e)
+                    indices.append(i)
                     break
-    
-        if not edges_to_process:
-            edges_to_process = shape.Edges
+        if not indices:
+            indices = list(range(len(shape.Edges)))
     else:
-        edges_to_process = shape.Edges
+        indices = list(range(len(shape.Edges)))
 
-    if not edges_to_process:
+    if not indices:
         return shape
 
     try:
-       
         if radius > 0:
-            return shape.makeFillet(radius, edges_to_process)
+            return shape.makeFillet(radius, indices)
         elif radius < 0:
-            return shape.makeChamfer(-radius, edges_to_process)
+            return shape.makeChamfer(-radius, indices)
         return shape
     except Exception as e:
         FreeCAD.Console.PrintWarning(f"Fillet/Chamfer failed: {e}\n")
