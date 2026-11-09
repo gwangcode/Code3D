@@ -25,7 +25,8 @@ class Shape2d:
 
     def __add__(self, o) -> 'Shape2d':
         from .patch import Shape
-        if isinstance(o, Shape):
+        # 【修复】通过 hasattr 判断是否是 3D Shape
+        if hasattr(o, 'shape'):
             my_face = self.to_face()
             return Shape(my_face.fuse(o.shape).removeSplitter(), op="fuse", children=[Shape(my_face), o])
             
@@ -35,7 +36,7 @@ class Shape2d:
 
     def __sub__(self, o) -> 'Shape2d':
         from .patch import Shape
-        if isinstance(o, Shape):
+        if hasattr(o, 'shape'):
             my_face = self.to_face()
             return Shape(my_face.cut(o.shape).removeSplitter(), op="cut", children=[Shape(my_face), o])
 
@@ -45,7 +46,7 @@ class Shape2d:
 
     def __mul__(self, o) -> 'Shape2d':
         from .patch import Shape
-        if isinstance(o, Shape):
+        if hasattr(o, 'shape'):
             my_face = self.to_face()
             return Shape(my_face.common(o.shape).removeSplitter(), op="common", children=[Shape(my_face), o])
 
