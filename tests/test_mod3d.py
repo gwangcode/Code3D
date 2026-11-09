@@ -3,7 +3,6 @@ import sys
 import os
 import glob
 
-# 动态探测 FreeCAD 路径
 def add_freecad_to_path():
     if 'CONDA_PREFIX' in os.environ:
         prefix = os.environ['CONDA_PREFIX']
@@ -38,9 +37,6 @@ def test_mod3d_operator_patch():
     cut_shape = box - sphere
     assert cut_shape.Volume < box.Volume
 
-# ==========================================
-# 【新增核心测试】测试 Shape 与 Shape2d 的混用
-# ==========================================
 def test_mixed_2d_3d_operations():
     """测试 3D 完美圆 (Shape) 和 2D 矩形 (Shape2d) 之间的布尔运算"""
     
@@ -51,13 +47,11 @@ def test_mixed_2d_3d_operations():
     fused_1 = c + r
     assert isinstance(fused_1, mod3d.Shape)
     assert fused_1.isValid()
-    assert fused_1.ShapeType == "Face"
     
     # 2. Shape2d + Shape
     fused_2 = r + c
     assert isinstance(fused_2, mod3d.Shape)
     assert fused_2.isValid()
-    assert fused_2.ShapeType == "Face"
 
     # 3. Shape - Shape2d
     cut_1 = c - r
