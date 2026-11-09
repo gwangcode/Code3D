@@ -31,7 +31,7 @@ class TransformFeature:
         self.op_type = op_type
     def execute(self, obj):
         pass
-    def getSubObjects(self, *args): # 【修复】兼容 FreeCAD 底层传参
+    def getSubObjects(self, *args):
         if hasattr(self, "Base") and self.Base:
             return [self.Base]
         if hasattr(self, "ViewObject") and hasattr(self.ViewObject, "Object") and self.ViewObject.Object.Base:
@@ -356,6 +356,7 @@ class PythonTerminal(QtWidgets.QPlainTextEdit):
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
         cursor = self.textCursor()
+        # 如果只是单击（没有拖拽产生选区），强制光标回到底部最后一行
         if not cursor.hasSelection():
             cursor.movePosition(QtGui.QTextCursor.End)
             self.setTextCursor(cursor)
@@ -363,23 +364,38 @@ class PythonTerminal(QtWidgets.QPlainTextEdit):
     def mouseReleaseEvent(self, event):
         super().mouseReleaseEvent(event)
         cursor = self.textCursor()
+        # 如果用户没选中任何文字，强制光标归位到最后一行
         if not cursor.hasSelection():
             cursor.movePosition(QtGui.QTextCursor.End)
             self.setTextCursor(cursor)
 
     def keyPressEvent(self, event):
         cursor = self.textCursor()
-        doc_end = len(self.toPlainText())
         
-        if not cursor.hasSelection() and cursor.position() != doc_end:
+        # ==========================================
+        # 【核心修复】判断光标是否在最后一行（当前输入行）
+        # ==========================================
+        current_block = cursor.block()
+        last_block = self.document().lastBlock()
+        
+        # 1. 如果光标不在当前输入行，且没有选区，强制吸回最后一行
+        if current_block != last_block and not cursor.hasSelection():
             cursor.movePosition(QtGui.QTextCursor.End)
             self.setTextCursor(cursor)
+            current_block = cursor.block() # 更新 block 引用
             
-        if cursor.hasSelection() and cursor.selectionStart() < doc_end:
-            if event.text() or event.key() in (QtCore.Qt.Key_Backspace, QtCore.Qt.Key_Delete, QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter):
-                if not (event.modifiers() & QtCore.Qt.ControlModifier):
-                    cursor.movePosition(QtGui.QTextCursor.End)
-                    self.setTextCursor(cursor)
+        # 2. 如果用户在历史记录区选中了代码，并试图输入（覆盖）或按退格删除
+        # 取消选区并强制回到底部，防止篡改历史行。但保留 Ctrl+C 等快捷键复制。
+        if cursor.hasSelection():
+            sel_start = cursor.selectionStart()
+            last_block_start = last_block.position()
+            if sel_start < last_block_start:
+                if event.text() or event.key() in (QtCore.Qt.Key_Backspace, QtCore.Qt.Key_Delete, QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter):
+                    if not (event.modifiers() & QtCore.Qt.ControlModifier):
+                        cursor.movePosition(QtGui.QTextCursor.End)
+                        self.setTextCursor(cursor)
+                        current_block = cursor.block()
+        # ==========================================
 
         cursor = self.textCursor()
         block = cursor.block()
