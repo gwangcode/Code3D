@@ -16,8 +16,8 @@ class Shape:
         self.parameters = parameters or {}
 
     def __add__(self, other):
-        from .shapes import Shape2d
-        if isinstance(other, Shape2d):
+        # 【修复】使用 hasattr 判断是否是 Shape2d，彻底避开循环导入
+        if hasattr(other, 'to_face') and not hasattr(other, 'ShapeType'):
             other_face = other.to_face()
             return Shape(self.shape.fuse(other_face).removeSplitter(), op="fuse", children=[self, Shape(other_face)])
             
@@ -34,8 +34,7 @@ class Shape:
         raise ValueError(f"Unsupported operand for +: {type(other)}")
 
     def __sub__(self, other):
-        from .shapes import Shape2d
-        if isinstance(other, Shape2d):
+        if hasattr(other, 'to_face') and not hasattr(other, 'ShapeType'):
             other_face = other.to_face()
             return Shape(self.shape.cut(other_face).removeSplitter(), op="cut", children=[self, Shape(other_face)])
 
@@ -50,8 +49,7 @@ class Shape:
         raise ValueError(f"Unsupported operand for -: {type(other)}")
 
     def __mul__(self, other):
-        from .shapes import Shape2d
-        if isinstance(other, Shape2d):
+        if hasattr(other, 'to_face') and not hasattr(other, 'ShapeType'):
             other_face = other.to_face()
             return Shape(self.shape.common(other_face).removeSplitter(), op="common", children=[self, Shape(other_face)])
 
