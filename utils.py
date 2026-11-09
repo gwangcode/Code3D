@@ -2,11 +2,7 @@ import FreeCAD
 import Part
 import Mesh
 
-# ==========================================
-# 1. 基础几何展示与草图函数
-# ==========================================
 def show(shape, name="Shape"):
-    """将给定的 Shape 显示在 FreeCAD 活动文档中。"""
     doc = FreeCAD.ActiveDocument
     if not doc:
         doc = FreeCAD.newDocument("Unnamed")
@@ -21,12 +17,21 @@ def sketch(shape_obj, sketch_name=None):
     """
     将给定对象的所有 Face 边界提取并转换到 Sketch 中。
     """
+    from mod3d.shapes import Shape2d
+    
     doc = FreeCAD.ActiveDocument
     if not doc:
         doc = FreeCAD.newDocument("Code3D_Sketch")
         FreeCAD.setActiveDocument(doc.Name)
 
-    shape = shape_obj.Shape if hasattr(shape_obj, "Shape") else shape_obj
+    # 【核心修复】处理不同类型的几何输入
+    if isinstance(shape_obj, Shape2d):
+        shape = shape_obj.to_face()
+    elif hasattr(shape_obj, "Shape"):  # mod3d.Shape 包装类
+        shape = shape_obj.Shape
+    else:                              # 原生 Part.Shape
+        shape = shape_obj
+
     faces = shape.Faces
     if not faces:
         raise ValueError("The given object has no faces to extract.")
@@ -64,19 +69,16 @@ def sketch(shape_obj, sketch_name=None):
             try:
                 curve = edge.Curve
                 
-                # 【核心修复】把 Part.Edge 转换为 Sketch 支持的几何原语
+                # 把 Part.Edge 转换为 Sketch 支持的几何原语
                 if isinstance(curve, Part.Line):
-                    # 线段提取
                     p1 = inv_placement.multVec(edge.Vertexes[0].Point)
                     p2 = inv_placement.multVec(edge.Vertexes[-1].Point)
                     sk.addGeometry(Part.LineSegment(p1, p2), False)
                     count += 1
                     
                 elif isinstance(curve, Part.Circle):
-                    # 圆或圆弧提取（这里简单处理为圆）
                     center = inv_placement.multVec(curve.Center)
                     normal = inv_placement.Rotation.multVec(curve.Axis)
-                    # 创建局部坐标系中的圆
                     local_circle = Part.Circle(center, normal, curve.Radius)
                     sk.addGeometry(local_circle, False)
                     count += 1
@@ -88,9 +90,6 @@ def sketch(shape_obj, sketch_name=None):
     FreeCAD.Console.PrintMessage(f"✅ Successfully added {count} geometries to Sketch '{sketch_name}'.\n")
     return sk
 
-# ==========================================
-# 2. 几何辅助工具函数
-# ==========================================
 def _is_vec(x, n: int) -> bool:
     if isinstance(x, FreeCAD.Vector):
         return n == 3
@@ -135,9 +134,6 @@ def extremes(part) -> tuple:
     bb = part.BoundBox
     return bb.XMin, bb.XMax, bb.YMin, bb.YMax, bb.ZMin, bb.ZMax
 
-# ==========================================
-# 3. 核心圆角与倒角处理
-# ==========================================
 def apply_fillet_chamfer(shape, radius, selected_edges=None):
     if not shape.Edges:
         return shape
