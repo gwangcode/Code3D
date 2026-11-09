@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no" ?>
-<package format="1">
+<package format="2">
     <name>Code3D</name>
     <description>Interactive FreeCAD Python Terminal for Code3D</description>
     <version>1.1.0</version>
-    <date>2024-05-20</date>
+    <date>2026-11-09</date>
     
     <author>
         <name>Gang Wang</name>
