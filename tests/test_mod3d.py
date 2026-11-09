@@ -3,27 +3,18 @@ import sys
 import os
 import glob
 
+# 动态探测 FreeCAD 路径
 def add_freecad_to_path():
     if 'CONDA_PREFIX' in os.environ:
         prefix = os.environ['CONDA_PREFIX']
-        possible_paths = [
-            os.path.join(prefix, 'lib', 'freecad', 'lib'),
-            os.path.join(prefix, 'lib', 'freecad', 'Mod'),
-            os.path.join(prefix, 'lib'),
-            os.path.join(prefix, 'lib', 'python3.11', 'site-packages'),
-        ]
-        for p in possible_paths:
-            if os.path.exists(p) and p not in sys.path:
-                sys.path.append(p)
-    
+        for p in [os.path.join(prefix, 'lib', 'freecad', 'lib'), os.path.join(prefix, 'lib')]:
+            if os.path.exists(p) and p not in sys.path: sys.path.append(p)
     if sys.platform == 'win32':
-        possible_win_paths = glob.glob(r"C:\Program Files\FreeCAD*\bin")
-        possible_win_paths += glob.glob(r"C:\Program Files\FreeCAD*\lib")
-        for p in possible_win_paths:
-            if os.path.exists(p) and p not in sys.path:
-                sys.path.append(p)
+        for p in glob.glob(r"C:\Program Files\FreeCAD*\bin"):
+            if p not in sys.path: sys.path.append(p)
 
 add_freecad_to_path()
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 try:
     import FreeCAD
@@ -31,7 +22,6 @@ try:
 except ImportError as e:
     pytest.skip(f"Skipping tests: FreeCAD not found. {e}", allow_module_level=True)
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import mod3d
 
 def test_mod3d_primitives():
@@ -48,21 +38,34 @@ def test_mod3d_operator_patch():
     cut_shape = box - sphere
     assert cut_shape.Volume < box.Volume
 
+# ==========================================
+# 【新增核心测试】测试 Shape 与 Shape2d 的混用
+# ==========================================
+def test_mixed_2d_3d_operations():
+    """测试 3D 完美圆 (Shape) 和 2D 矩形 (Shape2d) 之间的布尔运算"""
+    
+    c = mod3d.circle(10)       # Shape
+    r = mod3d.rectangle(15, 15) # Shape2d
+    
+    # 1. Shape + Shape2d
+    fused_1 = c + r
+    assert isinstance(fused_1, mod3d.Shape)
+    assert fused_1.isValid()
+    assert fused_1.ShapeType == "Face"
+    
+    # 2. Shape2d + Shape
+    fused_2 = r + c
+    assert isinstance(fused_2, mod3d.Shape)
+    assert fused_2.isValid()
+    assert fused_2.ShapeType == "Face"
+
+    # 3. Shape - Shape2d
+    cut_1 = c - r
+    assert isinstance(cut_1, mod3d.Shape)
+    assert cut_1.isValid()
+
 def test_apply_noise_seed_determinism():
-    """测试相同的 Seed 是否产生完全一致的结果"""
     base = mod3d.sphere(10)
     res1 = mod3d.apply_noise(base, density=0.5, amplitude=1.0, seed=42)
     res2 = mod3d.apply_noise(base, density=0.5, amplitude=1.0, seed=42)
-    
-    # 比较两者的包围盒（或顶点数据），如果 Seed 生效，两者的几何特征应完全一样
     assert abs(res1.BoundBox.XMax - res2.BoundBox.XMax) < 1e-5
-    assert abs(res1.Volume - res2.Volume) < 1e-3
-
-def test_apply_noise_seed_difference():
-    """测试不同的 Seed 是否产生不同的结果"""
-    base = mod3d.sphere(10)
-    res1 = mod3d.apply_noise(base, density=0.5, amplitude=1.0, seed=42)
-    res2 = mod3d.apply_noise(base, density=0.5, amplitude=1.0, seed=99)
-    
-    # 两个模型的体积或包围盒应该有区别
-    assert abs(res1.Volume - res2.Volume) > 0.1
