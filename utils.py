@@ -27,15 +27,11 @@ def show(shape, name="Mod3D_Object"):
     return obj
 
 def sketch(shape_obj, sketch_name=None):
-    """
-    将给定对象的所有 Face 边界提取并转换到 Sketch 中。
-    """
     doc = FreeCAD.ActiveDocument
     if not doc:
         doc = FreeCAD.newDocument("Code3D_Sketch")
         FreeCAD.setActiveDocument(doc.Name)
 
-    # 兼容 mod3d 的包装类和原生的 Part.Shape
     shape = shape_obj.Shape if hasattr(shape_obj, "Shape") else shape_obj
     faces = shape.Faces
     if not faces:
