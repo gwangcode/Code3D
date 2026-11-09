@@ -200,7 +200,8 @@ def polygon(R=1, n=6):
     return Shape2d(np.column_stack([R*np.cos(t), R*np.sin(t)]))
 
 def circle(R=1, step=0.1):
-    return polygon(R, max(int(np.ceil(2*np.pi*R / step)), 20))
+    raw_circle = Part.makeCircle(R)
+    return Shape(Part.Wire([raw_circle]))
 
 def rectangle(a=2, b=1):  return Shape2d([[0,0],[a,0],[a,b],[0,b]])
 def square(a=1):          return rectangle(a, a)
